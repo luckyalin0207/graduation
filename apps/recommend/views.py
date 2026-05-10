@@ -117,11 +117,14 @@ def recommend_by_item(user_id, k=9, refresh=False):
             if q:
                 queryset = queryset.filter(q)
 
-            jobs = list(queryset.exclude(job_id__in=exclude_jobs)[:100])
+            jobs = list(queryset.exclude(job_id__in=exclude_jobs).order_by('-salary_max')[:200])
             if len(jobs) > k:
                 jobs = random.sample(jobs, k)
         else:
-            jobs = list(JobData.objects.exclude(job_id__in=exclude_jobs).order_by('?')[:k])
+            jobs = list(
+                JobData.objects.exclude(job_id__in=exclude_jobs)
+                .order_by('-salary_max')[:k]
+            )
 
         if refresh:
             _save_recommend_history(user_id, [j.job_id for j in jobs])
@@ -145,7 +148,7 @@ def recommend_by_item(user_id, k=9, refresh=False):
         key_word__in=top_keywords
     ).exclude(
         job_id__in=exclude_jobs
-    ).order_by('?')[:100])
+    ).order_by('?')[:200])
 
     if not unsent_jobs:
         jobs = list(JobData.objects.exclude(job_id__in=exclude_jobs).order_by('?')[:k])
