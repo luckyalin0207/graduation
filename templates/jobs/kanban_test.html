@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>看板调试页面</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔍 看板功能调试页面</h1>
+    
+    <div class="section info">
+        <h3>当前会话信息</h3>
+        <p><strong>用户ID:</strong> {{ request.session.user_id|default:"未登录" }}</p>
+        <p><strong>用户名:</strong> {{ request.session.user_name|default:"未知" }}</p>
+    </div>
+    
+    <div class="section">
+        <h3>测试步骤</h3>
+        <button onclick="testAPI()">1. 测试API接口</button>
+        <button onclick="checkLogin()">2. 检查登录状态</button>
+        <button onclick="window.location.href='/jobs/kanban/'">3. 访问看板页面</button>
+    </div>
+    
+    <div class="section">
+        <h3>API响应</h3>
+        <div id="apiResult">点击"测试API接口"按钮查看结果</div>
+    </div>
+    
+    <div class="section">
+        <h3>控制台日志</h3>
+        <div id="console"></div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        function log(msg, type = 'info') {
+            const $console = $('#console');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
+            $console.append(`<div style="color: ${color}">[${time}] ${msg}</div>`);
+        }
+
+        function testAPI() {
+            log('开始测试API...');
+            $('#apiResult').html('<p>加载中...</p>');
+            
+            $.ajax({
+                url: '/jobs/api/kanban/',
+                type: 'GET',
+                success: function(res) {
+                    log('API请求成功', 'success');
+                    log('返回码: ' + res.code);
+                    
+                    let html = '<pre>' + JSON.stringify(res, null, 2) + '</pre>';
+                    
+                    if (res.code === 0) {
+                        html += '<div class="success"><strong>✅ API正常</strong></div>';
+                        html += '<p>数据列数: ' + (res.data ? res.data.length : 0) + '</p>';
+                        
+                        if (res.data && res.data.length > 0) {
+                            let totalCards = 0;
+                            res.data.forEach(col => {
+                                totalCards += col.cards.length;
+                                html += '<p>' + col.label + ': ' + col.cards.length + ' 张卡片</p>';
+                            });
+                            html += '<p><strong>总卡片数: ' + totalCards + '</strong></p>';
+                        }
+                    } else {
+                        html += '<div class="error"><strong>❌ API返回错误</strong><br>' + res.msg + '</div>';
+                    }
+                    
+                    $('#apiResult').html(html);
+                },
+                error: function(xhr, status, error) {
+                    log('API请求失败: ' + error, 'error');
+                    $('#apiResult').html(
+                        '<div class="error">' +
+                        '<strong>❌ 请求失败</strong><br>' +
+                        '状态: ' + status + '<br>' +
+                        '错误: ' + error + '<br>' +
+                        '响应: ' + xhr.responseText +
+                        '</div>'
+                    );
+                }
+            });
+        }
+
+        function checkLogin() {
+            log('检查登录状态...');
+            const userId = '{{ request.session.user_id|default:"" }}';
+            const userName = '{{ request.session.user_name|default:"" }}';
+            
+            if (userId) {
+                log('✅ 已登录 - 用户ID: ' + userId + ', 用户名: ' + userName, 'success');
+                alert('已登录\n用户ID: ' + userId + '\n用户名: ' + userName);
+            } else {
+                log('❌ 未登录', 'error');
+                alert('未登录！请先登录系统');
+            }
+        }
+
+        // 页面加载时自动检查
+        $(function() {
+            log('页面加载完成');
+            checkLogin();
+        });
+    </script>
+</body>
+</html>

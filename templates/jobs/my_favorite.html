@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}我的收藏 - 招聘数据分析系统{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">我的收藏职位</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered" id="favoriteTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>职位名称</th>
+                        <th>薪资</th>
+                        <th>地点</th>
+                        <th>公司</th>
+                        <th>学历</th>
+                        <th>收藏时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="favoriteTableBody">
+                </tbody>
+            </table>
+        </div>
+        <nav>
+            <ul class="pagination justify-content-center" id="pagination">
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    var currentPage = 1;
+    var pageSize = 10;
+    
+    function loadData(page) {
+        currentPage = page || 1;
+        $.ajax({
+            url: '{% url "get_my_favorite_list" %}',
+            type: 'GET',
+            data: { page: currentPage, limit: pageSize },
+            success: function(res) {
+                if(res.code === 0) {
+                    renderTable(res.data);
+                    renderPagination(res.count);
+                }
+            }
+        });
+    }
+    
+    function renderTable(data) {
+        var html = '';
+        if(data && data.length > 0) {
+            data.forEach(function(item) {
+                html += '<tr>';
+                html += '<td>' + item.favorite_id + '</td>';
+                html += '<td>' + (item.name || '-') + '</td>';
+                html += '<td>' + (item.salary || '-') + '</td>';
+                html += '<td>' + (item.place || '-') + '</td>';
+                html += '<td>' + (item.company || '-') + '</td>';
+                html += '<td>' + (item.education || '-') + '</td>';
+                html += '<td>' + (item.created_at || '-') + '</td>';
+                html += '<td><button class="btn btn-outline-danger btn-sm btn-cancel" data-id="' + item.job_id + '">取消收藏</button></td>';
+                html += '</tr>';
+            });
+        } else {
+            html = '<tr><td colspan="8" class="text-center">暂无收藏记录</td></tr>';
+        }
+        $('#favoriteTableBody').html(html);
+    }
+    
+    function renderPagination(total) {
+        var totalPages = Math.ceil(total / pageSize);
+        var html = '';
+        html += '<li class="page-item ' + (currentPage <= 1 ? 'disabled' : '') + '">';
+        html += '<a class="page-link" href="javascript:;" data-page="' + (currentPage - 1) + '">上一页</a></li>';
+        var startPage = Math.max(1, currentPage - 2);
+        var endPage = Math.min(totalPages, currentPage + 2);
+        for(var i = startPage; i <= endPage; i++) {
+            html += '<li class="page-item ' + (i === currentPage ? 'active' : '') + '">';
+            html += '<a class="page-link" href="javascript:;" data-page="' + i + '">' + i + '</a></li>';
+        }
+        html += '<li class="page-item ' + (currentPage >= totalPages ? 'disabled' : '') + '">';
+        html += '<a class="page-link" href="javascript:;" data-page="' + (currentPage + 1) + '">下一页</a></li>';
+        html += '<li class="page-item disabled"><span class="page-link">共 ' + total + ' 条</span></li>';
+        $('#pagination').html(html);
+    }
+    
+    $('#pagination').on('click', 'a.page-link', function() {
+        var page = $(this).data('page');
+        if(page && !$(this).parent().hasClass('disabled')) {
+            loadData(page);
+        }
+    });
+    
+    $('#favoriteTableBody').on('click', '.btn-cancel', function() {
+        var jobId = $(this).data('id');
+        var btn = $(this);
+        $.ajax({
+            url: '{% url "favorite_job" %}',
+            type: 'POST',
+            data: {
+                job_id: jobId,
+                action: 'cancel',
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            },
+            success: function(res) {
+                if(res.code === 0) {
+                    btn.closest('tr').remove();
+                } else {
+                    alert(res.msg);
+                }
+            }
+        });
+    });
+    
+    loadData(1);
+});
+</script>
+{% endblock %}
+

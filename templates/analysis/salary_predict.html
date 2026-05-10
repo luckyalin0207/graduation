@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+
+{% block title %}薪资推测 - 招聘数据可视化分析平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .predict-panel { border-radius: 15px; overflow: hidden; }
+    .predict-header { background: linear-gradient(45deg, #4e73df, #1cc88a); color: white; padding: 1.5rem; text-align: center; }
+    .result-card { transition: all 0.3s ease; }
+    .result-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+    .salary-display { font-size: 2.5rem; font-weight: bold; color: #1cc88a; }
+    
+    /* 优化下拉框显示 */
+    .form-control {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+    
+    /* 优化下拉选项显示 */
+    select.form-control option {
+        white-space: normal;
+        overflow: visible;
+        padding: 8px;
+        line-height: 1.5;
+    }
+    
+    /* 增加下拉框高度 */
+    select.form-control {
+        height: auto;
+        min-height: 38px;
+        padding: 8px 12px;
+    }
+    
+    /* 标签样式优化 */
+    .form-group label {
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">薪资推测</h1>
+</div>
+
+<div class="row">
+    <div class="col-xl-4 col-lg-5">
+        <div class="card shadow mb-4 predict-panel">
+            <div class="predict-header">
+                <i class="fas fa-brain fa-3x mb-3"></i>
+                <h4>智能薪资推测</h4>
+                <p class="mb-0">基于大数据分析预测您的薪资范围</p>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">期望城市</label>
+                    <select class="form-control" id="city">
+                        <option value="">不限</option>
+                        {% for city in cities %}
+                        <option value="{{ city }}">{{ city }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">学历</label>
+                    <select class="form-control" id="education">
+                        <option value="">不限</option>
+                        {% for edu in educations %}
+                        <option value="{{ edu }}">{{ edu }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">工作经验</label>
+                    <select class="form-control" id="experience">
+                        <option value="">不限</option>
+                        {% for exp in experiences %}
+                        <option value="{{ exp }}">{{ exp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">期望岗位</label>
+                    <select class="form-control" id="jobType">
+                        <option value="">不限</option>
+                        {% for job_type in job_types %}
+                        <option value="{{ job_type }}">{{ job_type }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-lg btn-block" onclick="predict()">
+                    <i class="fas fa-magic"></i> 开始推测
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-8 col-lg-7">
+        <div class="row" id="resultArea" style="display: none;">
+            <div class="col-md-4 mb-4">
+                <div class="card border-left-success shadow h-100 py-2 result-card">
+                    <div class="card-body text-center">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">预测平均薪资</div>
+                        <div class="salary-display" id="avgSalary">--</div>
+                        <div class="text-muted">K/月</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card border-left-info shadow h-100 py-2 result-card">
+                    <div class="card-body text-center">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">薪资下限</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800" id="minSalary">--</div>
+                        <div class="text-muted">K/月</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card border-left-warning shadow h-100 py-2 result-card">
+                    <div class="card-body text-center">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">薪资上限</div>
+                        <div class="h2 mb-0 font-weight-bold text-gray-800" id="maxSalary">--</div>
+                        <div class="text-muted">K/月</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card shadow mb-4" id="chartCard" style="display: none;">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">薪资分布（基于 <span id="matchCount">0</span> 个匹配岗位）</h6>
+            </div>
+            <div class="card-body">
+                <div id="salaryChart" style="height: 300px;"></div>
+            </div>
+        </div>
+
+        <!-- Job-SDF 历史需求参考 -->
+        <div class="card shadow mb-4" id="sdfReferenceCard" style="display:none;">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">📊 Job-SDF 历史需求趋势参考</h6>
+                <small class="text-muted">数据来源：Job-SDF NeurIPS 2024（2021-2023）</small>
+            </div>
+            <div class="card-body">
+                <div id="sdfDemandChart" style="height:220px;"></div>
+                <div id="sdfDemandInfo" class="mt-2" style="font-size:12px;color:#888;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function predict() {
+    var params = {
+        city: $('#city').val(),
+        education: $('#education').val(),
+        experience: $('#experience').val(),
+        job_type: $('#jobType').val()
+    };
+    
+    console.log('薪资推测参数:', params);
+    
+    // 显示加载状态
+    $('#resultArea').show();
+    $('#chartCard').show();
+    $('#avgSalary').html('<i class="fas fa-spinner fa-spin"></i>');
+    $('#minSalary').html('<i class="fas fa-spinner fa-spin"></i>');
+    $('#maxSalary').html('<i class="fas fa-spinner fa-spin"></i>');
+    $('#salaryChart').html('<div class="text-center py-5"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">正在分析...</p></div>');
+    
+    $.get('{% url "do_salary_predict" %}', params, function(res) {
+        console.log('薪资推测结果:', res);
+        
+        if(res.code === 0) {
+            $('#avgSalary').text(res.data.avg_salary);
+            $('#minSalary').text(res.data.min_salary || '--');
+            $('#maxSalary').text(res.data.max_salary);
+            $('#matchCount').text(res.data.count);
+            
+            // 检查薪资分布数据
+            if(res.data.salary_dist && res.data.salary_dist.length > 0) {
+                console.log('薪资分布数据:', res.data.salary_dist);
+                
+                var chart = echarts.init(document.getElementById('salaryChart'));
+                chart.setOption({
+                    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                    legend: { orient: 'vertical', left: 'left' },
+                    series: [{
+                        type: 'pie',
+                        radius: ['40%', '70%'],
+                        avoidLabelOverlap: false,
+                        itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                        label: { show: true, formatter: '{b}\n{d}%' },
+                        emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+                        data: res.data.salary_dist
+                    }]
+                });
+            } else {
+                console.warn('薪资分布数据为空');
+                $('#salaryChart').html('<div class="text-center text-muted py-5">暂无薪资分布数据</div>');
+            }
+            
+            // 显示预测方法提示
+            if(res.data.note) {
+                $('#chartCard .card-header h6').append(' <small class="text-muted">(' + res.data.note + ')</small>');
+            }
+
+            // ── 加载 Job-SDF 历史需求参考 ──────────────────
+            var kw = params.job_type || params.city || 'Python';
+            $('#sdfReferenceCard').show();
+            $('#sdfDemandChart').html('<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> 加载历史数据...</div>');
+            $.get('/analysis/api/sdf/salary-reference/?keyword=' + encodeURIComponent(kw), function(sdfRes){
+                if(sdfRes.code === 0 && sdfRes.historical_demand && sdfRes.historical_demand.has_data){
+                    var hd = sdfRes.historical_demand;
+                    var demandChart = echarts.init(document.getElementById('sdfDemandChart'));
+                    demandChart.setOption({
+                        tooltip: { trigger: 'axis' },
+                        grid: { left: '8%', right: '5%', top: '15%', bottom: '15%' },
+                        xAxis: { type: 'category', data: hd.dates, axisLabel: { fontSize: 10, interval: 5, rotate: 30 } },
+                        yAxis: { type: 'value', name: '需求指数', nameTextStyle: { fontSize: 10 } },
+                        series: [{
+                            type: 'line', data: hd.values, smooth: true, symbol: 'none',
+                            areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                                {offset:0,color:'rgba(28,200,138,0.4)'},{offset:1,color:'rgba(28,200,138,0.02)'}
+                            ])},
+                            lineStyle: { color: '#1cc88a', width: 2 },
+                            itemStyle: { color: '#1cc88a' }
+                        }]
+                    });
+                    var growthText = hd.growth_rate > 0
+                        ? '<span class="text-success">↑ 增长 ' + hd.growth_rate + '%</span>'
+                        : (hd.growth_rate < 0 ? '<span class="text-danger">↓ 下降 ' + Math.abs(hd.growth_rate) + '%</span>' : '<span class="text-muted">→ 持平</span>');
+                    $('#sdfDemandInfo').html(
+                        '<b>' + kw + '</b> 在 Job-SDF 数据集中的历史需求趋势（2021-2023），整体 ' + growthText +
+                        '&nbsp;&nbsp;当前爬取数据：平均薪资 <b>' + sdfRes.salary_stats.avg + 'K</b>，共 <b>' + sdfRes.salary_stats.count + '</b> 个岗位'
+                    );
+                } else {
+                    $('#sdfDemandChart').html('<div class="text-center text-muted py-4"><small>暂无该岗位的Job-SDF历史数据</small></div>');
+                    $('#sdfDemandInfo').html('');
+                }
+            });
+        } else {
+            console.error('薪资推测失败:', res.msg);
+            $('#avgSalary').text('--');
+            $('#minSalary').text('--');
+            $('#maxSalary').text('--');
+            $('#salaryChart').html('<div class="text-center text-danger py-5"><i class="fas fa-exclamation-triangle fa-2x mb-2"></i><p>' + (res.msg || '没有找到匹配数据') + '</p></div>');
+        }
+    }).fail(function(xhr, status, error) {
+        console.error('请求失败:', status, error);
+        $('#avgSalary').text('--');
+        $('#minSalary').text('--');
+        $('#maxSalary').text('--');
+        $('#salaryChart').html('<div class="text-center text-danger py-5"><i class="fas fa-exclamation-triangle fa-2x mb-2"></i><p>网络错误: ' + error + '</p></div>');
+    });
+}
+</script>
+{% endblock %}

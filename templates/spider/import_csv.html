@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}导入数据 - 招聘数据分析系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">CSV数据导入</h6>
+            </div>
+            <div class="card-body">
+                <form id="importForm" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label>选择文件</label>
+                        <input type="file" name="csv_file" accept=".csv" class="form-control-file">
+                    </div>
+                    <div class="form-group">
+                        <button type="button" class="btn btn-primary" id="importBtn">导入数据</button>
+                        <a href="{% url 'spider_manage' %}" class="btn btn-secondary">返回</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">CSV格式说明</h6>
+            </div>
+            <div class="card-body">
+                <p>CSV文件应包含以下列（列名可以是中文或英文）：</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm mt-3">
+                        <thead>
+                            <tr>
+                                <th>英文列名</th>
+                                <th>中文列名</th>
+                                <th>说明</th>
+                                <th>必填</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>name</td><td>职位名称</td><td>职位名称</td><td>是</td></tr>
+                            <tr><td>salary</td><td>薪资</td><td>如：10-15K</td><td>否</td></tr>
+                            <tr><td>city</td><td>城市</td><td>如：北京</td><td>否</td></tr>
+                            <tr><td>place</td><td>地点</td><td>如：北京-朝阳区</td><td>否</td></tr>
+                            <tr><td>education</td><td>学历</td><td>如：本科</td><td>否</td></tr>
+                            <tr><td>experience</td><td>经验</td><td>如：3-5年</td><td>否</td></tr>
+                            <tr><td>company</td><td>公司</td><td>公司名称</td><td>否</td></tr>
+                            <tr><td>company_type</td><td>公司类型</td><td>如：民营企业</td><td>否</td></tr>
+                            <tr><td>scale</td><td>规模</td><td>如：500-1000人</td><td>否</td></tr>
+                            <tr><td>key_word</td><td>关键词</td><td>如：Python</td><td>否</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-3 text-muted">
+                    <strong>示例CSV内容：</strong>
+                </p>
+                <pre class="bg-light p-2 rounded"><code>name,salary,city,education,experience,company,key_word
+Python开发工程师,15-25K,北京,本科,3-5年,阿里巴巴,Python
+Java后端开发,12-20K,上海,本科,1-3年,腾讯科技,Java</code></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    $('#importBtn').click(function(){
+        var formData = new FormData($('#importForm')[0]);
+        var file = $('input[name="csv_file"]')[0].files[0];
+        
+        if(!file){
+            alert('请选择CSV文件');
+            return;
+        }
+        
+        $('#importBtn').prop('disabled', true).text('导入中...');
+        
+        $.ajax({
+            url: '{% url "import_csv" %}',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res){
+                $('#importBtn').prop('disabled', false).text('导入数据');
+                if(res.code === 0){
+                    alert(res.msg);
+                    window.location.href = '{% url "spider_manage" %}';
+                } else {
+                    alert(res.msg);
+                }
+            },
+            error: function(){
+                $('#importBtn').prop('disabled', false).text('导入数据');
+                alert('导入失败，请重试');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

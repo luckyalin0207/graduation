@@ -1,0 +1,229 @@
+/* ============================================================
+   Apple-style Animations & Motion Design
+   克制、有意义、服务于内容
+   ============================================================ */
+
+/* ── 1. 页面内容入场动画 ──────────────────────────────────── */
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* 内容区整体入场 */
+.container-fluid {
+    animation: fadeInUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* 卡片依次入场（stagger） */
+.row .col-xl-3:nth-child(1) .card,
+.row .col-md-6:nth-child(1) .card,
+.row .col-lg-5:nth-child(1) .card { animation: fadeInUp 0.35s 0.05s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+
+.row .col-xl-3:nth-child(2) .card,
+.row .col-md-6:nth-child(2) .card,
+.row .col-lg-7:nth-child(2) .card { animation: fadeInUp 0.35s 0.10s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+
+.row .col-xl-3:nth-child(3) .card { animation: fadeInUp 0.35s 0.15s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+.row .col-xl-3:nth-child(4) .card { animation: fadeInUp 0.35s 0.20s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+
+/* ── 2. 卡片悬停浮起 ──────────────────────────────────────── */
+.card {
+    transition: transform 0.25s cubic-bezier(0.25,0.46,0.45,0.94),
+                box-shadow 0.25s cubic-bezier(0.25,0.46,0.45,0.94) !important;
+    will-change: transform;
+}
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08),
+                0 12px 32px rgba(0,0,0,0.10) !important;
+}
+/* 统计卡片悬停更明显 */
+.border-left-primary:hover,
+.border-left-success:hover,
+.border-left-info:hover,
+.border-left-warning:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12) !important;
+}
+
+/* ── 3. 按钮点击反馈 ──────────────────────────────────────── */
+.btn {
+    transition: transform 0.12s ease,
+                box-shadow 0.15s ease,
+                background 0.15s ease !important;
+}
+.btn:active {
+    transform: scale(0.97) !important;
+}
+.btn-primary:active {
+    transform: scale(0.97) !important;
+    box-shadow: 0 1px 4px rgba(0,113,227,0.3) !important;
+}
+
+/* ── 4. 侧边栏链接指示条 ──────────────────────────────────── */
+.sidebar .nav-item .nav-link {
+    position: relative;
+    transition: background 0.2s ease, color 0.2s ease, padding-left 0.2s ease !important;
+}
+.sidebar .nav-item .nav-link::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) scaleY(0);
+    width: 3px;
+    height: 60%;
+    background: #0071e3;
+    border-radius: 0 2px 2px 0;
+    transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+.sidebar .nav-item .nav-link:hover::before,
+.sidebar .nav-item.active .nav-link::before {
+    transform: translateY(-50%) scaleY(1);
+}
+.sidebar .nav-item .nav-link:hover {
+    padding-left: 24px !important;
+}
+
+/* ── 5. 表格行入场 ────────────────────────────────────────── */
+#jobTableBody tr,
+#sendTableBody tr {
+    animation: fadeIn 0.2s ease both;
+}
+#jobTableBody tr:nth-child(1)  { animation-delay: 0.02s; }
+#jobTableBody tr:nth-child(2)  { animation-delay: 0.04s; }
+#jobTableBody tr:nth-child(3)  { animation-delay: 0.06s; }
+#jobTableBody tr:nth-child(4)  { animation-delay: 0.08s; }
+#jobTableBody tr:nth-child(5)  { animation-delay: 0.10s; }
+#jobTableBody tr:nth-child(6)  { animation-delay: 0.12s; }
+#jobTableBody tr:nth-child(7)  { animation-delay: 0.14s; }
+#jobTableBody tr:nth-child(8)  { animation-delay: 0.16s; }
+#jobTableBody tr:nth-child(9)  { animation-delay: 0.18s; }
+#jobTableBody tr:nth-child(10) { animation-delay: 0.20s; }
+
+/* ── 6. 数字计数动画（首页统计卡片）─────────────────────── */
+.count-up {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+/* ── 7. 进度条动画 ────────────────────────────────────────── */
+.progress-bar {
+    transition: width 0.8s cubic-bezier(0.25,0.46,0.45,0.94) !important;
+}
+
+/* ── 8. Badge 弹入 ────────────────────────────────────────── */
+.badge {
+    animation: scaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+/* ── 9. 对话消息入场 ──────────────────────────────────────── */
+.msg {
+    animation: fadeInUp 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both;
+}
+.msg.user {
+    animation: slideInLeft 0.25s cubic-bezier(0.25,0.46,0.45,0.94) both;
+}
+
+/* ── 10. 看板卡片入场 ─────────────────────────────────────── */
+.kanban-card {
+    animation: scaleIn 0.2s cubic-bezier(0.25,0.46,0.45,0.94) both;
+    transition: transform 0.2s cubic-bezier(0.25,0.46,0.45,0.94),
+                box-shadow 0.2s ease !important;
+}
+.kanban-card:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12) !important;
+}
+
+/* ── 11. Modal 弹出动画 ───────────────────────────────────── */
+.modal.fade .modal-dialog {
+    transform: scale(0.95) translateY(-10px);
+    transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1),
+                opacity 0.2s ease !important;
+}
+.modal.show .modal-dialog {
+    transform: scale(1) translateY(0) !important;
+}
+
+/* ── 12. 下拉菜单动画 ─────────────────────────────────────── */
+.dropdown-menu {
+    animation: scaleIn 0.18s cubic-bezier(0.25,0.46,0.45,0.94) both;
+    transform-origin: top right;
+}
+
+/* ── 13. 通知横幅滑入 ─────────────────────────────────────── */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); max-height: 0; }
+    to   { opacity: 1; transform: translateY(0); max-height: 80px; }
+}
+#notifBanner {
+    animation: slideDown 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both;
+    overflow: hidden;
+}
+
+/* ── 14. 快捷按钮悬停 ─────────────────────────────────────── */
+.quick-btns .btn {
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease !important;
+}
+.quick-btns .btn:hover {
+    transform: translateY(-1px);
+}
+.quick-btns .btn:active {
+    transform: scale(0.96);
+}
+
+/* ── 15. 输入框聚焦动画 ───────────────────────────────────── */
+.form-control {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* ── 16. 图表容器淡入 ─────────────────────────────────────── */
+[id$="Chart"] {
+    animation: fadeIn 0.5s 0.2s ease both;
+}
+
+/* ── 17. 分页按钮 ─────────────────────────────────────────── */
+.page-link {
+    transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease !important;
+}
+.page-link:hover { transform: translateY(-1px); }
+.page-link:active { transform: scale(0.95); }
+
+/* ── 18. 登录页卡片入场 ───────────────────────────────────── */
+@keyframes loginCardIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── 19. 滚动触发淡入（JS 配合）─────────────────────────── */
+.scroll-reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.25,0.46,0.45,0.94);
+}
+.scroll-reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ── 20. 减少动效（尊重用户偏好）────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

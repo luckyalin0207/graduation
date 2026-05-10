@@ -1,0 +1,287 @@
+{% extends 'base.html' %}
+
+{% block title %}岗位匹配 - 招聘数据可视化分析平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .match-score { width: 50px; height: 50px; line-height: 50px; border-radius: 50%; text-align: center; font-weight: bold; color: white; background: linear-gradient(45deg, #4e73df, #36b9cc); }
+    .job-card { transition: all 0.3s ease; border-left: 4px solid transparent; }
+    .job-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-left: 4px solid #4e73df; }
+    .salary-range { font-weight: 600; color: #1cc88a; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">岗位匹配</h1>
+</div>
+
+<div class="row">
+    <div class="col-xl-4 col-lg-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3" style="background: linear-gradient(45deg, #4e73df, #1cc88a); color: white;">
+                <h6 class="m-0 font-weight-bold"><i class="fas fa-user-tie"></i> 填写您的信息</h6>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">技能关键词</label>
+                    <input type="text" class="form-control" id="skills" placeholder="如：Python, Java, 数据分析（逗号分隔）">
+                    <small class="text-muted">多个技能用逗号分隔</small>
+                </div>
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">期望城市</label>
+                    <select class="form-control" id="city">
+                        <option value="">不限</option>
+                        <option value="北京">北京</option>
+                        <option value="上海">上海</option>
+                        <option value="深圳">深圳</option>
+                        <option value="广州">广州</option>
+                        <option value="杭州">杭州</option>
+                        <option value="成都">成都</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="font-weight-bold text-primary">期望最低薪资(K)</label>
+                    <select class="form-control" id="salaryMin">
+                        <option value="0">不限</option>
+                        <option value="5">5K以上</option>
+                        <option value="10">10K以上</option>
+                        <option value="15">15K以上</option>
+                        <option value="20">20K以上</option>
+                        <option value="30">30K以上</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-lg btn-block" onclick="matchJobs()">
+                    <i class="fas fa-search"></i> 开始匹配
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-8 col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">匹配结果</h6>
+                <span class="badge badge-primary" id="resultCount">0 个匹配岗位</span>
+            </div>
+            <div class="card-body" id="resultList">
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-hand-point-left fa-3x mb-3"></i>
+                    <p>请在左侧填写信息后点击"开始匹配"</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Job-SDF 技能共现推荐 -->
+        <div class="card shadow mb-4" id="sdfSkillCard" style="display:none;">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">🔗 Job-SDF 技能共现推荐</h6>
+                <small class="text-muted">基于2021-2023年百万招聘数据的技能关联分析</small>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3" style="font-size:13px;">掌握以下技能可以显著提升您的竞争力：</p>
+                <div id="sdfSkillList" class="row"></div>
+            </div>
+        </div>
+
+        <!-- Job-SDF 历史需求趋势 -->
+        <div class="card shadow mb-4" id="sdfTrendCard" style="display:none;">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">📊 历史需求趋势（Job-SDF 2021-2023）</h6>
+                <small class="text-muted">了解该技能的历史市场走势</small>
+            </div>
+            <div class="card-body">
+                <div id="sdfMatchTrendChart" style="height:200px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Toast 提示函数 ────────────────────────────────────────
+function showToast(message, type) {
+    var bgColor = type === 'success' ? '#1cc88a' : 
+                  type === 'error' ? '#e74a3b' : '#36b9cc';
+    var icon = type === 'success' ? 'fa-check-circle' :
+               type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+    
+    var toast = $('<div>')
+        .css({
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            background: bgColor,
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 9999,
+            fontSize: '14px',
+            fontWeight: '500',
+            minWidth: '200px'
+        })
+        .html('<i class="fas ' + icon + ' mr-2"></i>' + message)
+        .appendTo('body');
+    
+    setTimeout(function() {
+        toast.fadeOut(300, function() {
+            $(this).remove();
+        });
+    }, 3000);
+}
+
+function matchJobs() {
+    var params = {
+        skills: $('#skills').val(),
+        city: $('#city').val(),
+        salary_min: $('#salaryMin').val()
+    };
+    
+    $.get('{% url "do_job_match" %}', params, function(res) {
+        if(res.code === 0 && res.data.length > 0) {
+            $('#resultCount').text(res.data.length + ' 个匹配岗位');
+            var html = '';
+            res.data.forEach(function(job) {
+                html += `
+                <div class="card mb-3 job-card">
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-auto">
+                                <div class="match-score">${job.match_score}%</div>
+                            </div>
+                            <div class="col">
+                                <h5 class="mb-1 text-primary">${job.name}</h5>
+                                <p class="mb-1">${job.company}</p>
+                                <small class="text-muted">
+                                    <i class="fas fa-map-marker-alt"></i> ${job.city} &nbsp;
+                                    <i class="fas fa-graduation-cap"></i> ${job.education} &nbsp;
+                                    <i class="fas fa-clock"></i> ${job.experience}
+                                </small>
+                            </div>
+                            <div class="col-auto text-right">
+                                <div class="salary-range h4">${job.salary}</div>
+                                <button class="btn btn-sm btn-primary send-btn" data-id="${job.job_id}" data-href="${encodeURIComponent(job.href || '')}">投递</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            $('#resultList').html(html);
+        } else {
+            $('#resultCount').text('0 个匹配岗位');
+            $('#resultList').html('<div class="text-center text-muted py-5"><i class="fas fa-search fa-3x mb-3"></i><p>没有找到匹配的岗位，请调整筛选条件</p></div>');
+        }
+
+        // ── Job-SDF 技能共现推荐 ──────────────────────────
+        var skillInput = params.skills || '';
+        var mainSkill = skillInput.split(',')[0].trim();
+        if(mainSkill){
+            $('#sdfSkillCard').show();
+            $.get('/analysis/api/sdf/cooccurrence/?keyword=' + encodeURIComponent(mainSkill), function(sdfRes){
+                if(sdfRes.code === 0 && sdfRes.data && sdfRes.data.length > 0){
+                    var html = '';
+                    sdfRes.data.forEach(function(item){
+                        var pct = Math.min(100, Math.round(item.frequency / sdfRes.data[0].frequency * 100));
+                        var badgeColor = pct >= 70 ? 'success' : (pct >= 40 ? 'info' : 'secondary');
+                        html += '<div class="col-md-6 mb-3">' +
+                            '<div class="d-flex align-items-center justify-content-between mb-1">' +
+                            '<span class="font-weight-bold" style="font-size:14px;">' + item.skill + '</span>' +
+                            '<span class="badge badge-' + badgeColor + '">' + item.frequency + '次共现</span>' +
+                            '</div>' +
+                            '<div class="progress" style="height:8px;">' +
+                            '<div class="progress-bar bg-' + badgeColor + '" style="width:' + pct + '%"></div>' +
+                            '</div></div>';
+                    });
+                    $('#sdfSkillList').html(html);
+                } else {
+                    $('#sdfSkillCard').hide();
+                }
+            });
+
+            // Job-SDF 历史趋势
+            $('#sdfTrendCard').show();
+            $.get('/analysis/api/sdf/skill-trend/?keywords=' + encodeURIComponent(mainSkill), function(trendRes){
+                if(trendRes.code === 0 && trendRes.series && trendRes.series.length > 0){
+                    var chart = echarts.init(document.getElementById('sdfMatchTrendChart'));
+                    var s = trendRes.series[0];
+                    var dataMap = {};
+                    s.dates.forEach(function(d, i){ dataMap[d] = s.data[i]; });
+                    var aligned = trendRes.dates.map(function(d){ return dataMap[d] !== undefined ? dataMap[d] : null; });
+                    chart.setOption({
+                        tooltip: { trigger: 'axis' },
+                        grid: { left: '8%', right: '5%', top: '10%', bottom: '15%' },
+                        xAxis: { type: 'category', data: trendRes.dates, axisLabel: { fontSize: 9, interval: 5, rotate: 30 } },
+                        yAxis: { type: 'value', name: '需求指数', nameTextStyle: { fontSize: 9 } },
+                        series: [{
+                            type: 'line', data: aligned, smooth: true, symbol: 'none',
+                            areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                                {offset:0,color:'rgba(78,115,223,0.35)'},{offset:1,color:'rgba(78,115,223,0.02)'}
+                            ])},
+                            lineStyle: { color: '#4e73df', width: 2 },
+                            itemStyle: { color: '#4e73df' }
+                        }]
+                    });
+                } else {
+                    $('#sdfTrendCard').hide();
+                }
+            });
+        }
+    });
+}
+
+// 投递按钮：智能处理有无链接的情况
+$(document).on('click', '.send-btn', function() {
+    var jobId = $(this).data('id');
+    var href = decodeURIComponent($(this).data('href') || '');
+    var btn = $(this);
+    
+    if (href && href !== 'undefined' && href !== 'null') {
+        // 情况1: 有原始链接 - 直接打开 + 自动记录
+        window.open(href, '_blank');
+        
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 记录中...');
+        
+        $.ajax({
+            url: '{% url "send_job" %}',
+            type: 'POST',
+            data: {
+                job_id: jobId,
+                action: 'send',
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            },
+            success: function(res) {
+                if(res.code === 0) {
+                    btn.text('已投递')
+                       .removeClass('btn-primary')
+                       .addClass('btn-secondary')
+                       .prop('disabled', true)
+                       .removeClass('send-btn');
+                    
+                    showToast('✓ 投递成功，已记录到系统', 'success');
+                } else {
+                    btn.text('投递')
+                       .removeClass('btn-secondary')
+                       .addClass('btn-primary')
+                       .prop('disabled', false);
+                    
+                    showToast('记录失败: ' + res.msg, 'error');
+                }
+            },
+            error: function(xhr) {
+                btn.text('投递')
+                   .removeClass('btn-secondary')
+                   .addClass('btn-primary')
+                   .prop('disabled', false);
+                
+                showToast('网络错误，请稍后重试', 'error');
+            }
+        });
+    } else {
+        // 情况2: 无原始链接 - 提示用户
+        showToast('该职位暂无直接投递链接，请在招聘平台搜索', 'error');
+    }
+});
+</script>
+{% endblock %}

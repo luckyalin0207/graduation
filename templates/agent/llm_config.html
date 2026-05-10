@@ -1,0 +1,381 @@
+{% extends 'base.html' %}
+
+{% block title %}大模型配置 - 智能求职助手{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-form {
+        background: white;
+        border-radius: 8px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .form-group label {
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 8px;
+    }
+    .form-group .form-control {
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        padding: 10px;
+    }
+    .form-group .form-control:focus {
+        border-color: #4e73df;
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .status-enabled {
+        background: #1cc88a;
+        color: white;
+    }
+    .status-disabled {
+        background: #e74a3b;
+        color: white;
+    }
+    .help-text {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+    }
+    .test-result {
+        margin-top: 15px;
+        padding: 15px;
+        border-radius: 5px;
+        display: none;
+    }
+    .test-result.success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+    .test-result.error {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-cog"></i> 大模型配置
+        </h6>
+    </div>
+    <div class="card-body">
+        <!-- 当前状态 -->
+        <div class="alert alert-info mb-4">
+            <h6><i class="fas fa-info-circle"></i> 当前状态</h6>
+            <p class="mb-2">
+                <strong>提供商：</strong>{{ config.get_provider_display }}
+                {% if config.enabled %}
+                    <span class="status-badge status-enabled ml-2">已启用</span>
+                {% else %}
+                    <span class="status-badge status-disabled ml-2">未启用</span>
+                {% endif %}
+            </p>
+            {% if config.enabled %}
+            <p class="mb-0">
+                <strong>模型：</strong>{{ config.model }} | 
+                <strong>更新时间：</strong>{{ config.updated_at|date:"Y-m-d H:i:s" }}
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- 配置表单 -->
+        <form id="llmConfigForm" class="config-form">
+            {% csrf_token %}
+            
+            <!-- 提供商选择 -->
+            <div class="form-group">
+                <label for="provider">大模型提供商 <span class="text-danger">*</span></label>
+                <select class="form-control" id="provider" name="provider" required>
+                    <option value="none" {% if config.provider == 'none' %}selected{% endif %}>不使用大模型</option>
+                    <option value="openai" {% if config.provider == 'openai' %}selected{% endif %}>OpenAI (GPT)</option>
+                    <option value="claude" {% if config.provider == 'claude' %}selected{% endif %}>Claude (Anthropic)</option>
+                    <option value="wenxin" {% if config.provider == 'wenxin' %}selected{% endif %}>文心一言 (百度)</option>
+                </select>
+                <div class="help-text">选择要使用的大模型服务提供商</div>
+            </div>
+
+            <!-- API Key -->
+            <div class="form-group" id="apiKeyGroup">
+                <label for="api_key">API Key <span class="text-danger">*</span></label>
+                <input type="password" class="form-control" id="api_key" name="api_key"
+                       value="" placeholder="{% if config.api_key %}已设置（出于安全不显示）{% else %}请输入API Key{% endif %}">
+                <div class="help-text">
+                    <a href="#" id="toggleApiKey" class="text-primary">
+                        <i class="fas fa-eye"></i> 显示/隐藏
+                    </a>
+                    | 
+                    <a href="https://platform.openai.com/api-keys" target="_blank" id="getApiKeyLink" class="text-primary">
+                        <i class="fas fa-external-link-alt"></i> 获取API Key
+                    </a>
+                </div>
+            </div>
+
+            <!-- Secret Key (仅文心一言) -->
+            <div class="form-group" id="secretKeyGroup" style="display: none;">
+                <label for="secret_key">Secret Key <span class="text-danger">*</span></label>
+                <input type="password" class="form-control" id="secret_key" name="secret_key"
+                       value="" placeholder="{% if config.secret_key %}已设置（出于安全不显示）{% else %}请输入Secret Key{% endif %}">
+                <div class="help-text">文心一言需要同时提供API Key和Secret Key</div>
+            </div>
+
+            <!-- 模型选择 -->
+            <div class="form-group" id="modelGroup">
+                <label for="model">模型名称 <span class="text-danger">*</span></label>
+                <select class="form-control" id="model" name="model" required>
+                    <!-- 动态填充 -->
+                </select>
+                <div class="help-text">选择要使用的具体模型</div>
+            </div>
+
+            <!-- Base URL (可选) -->
+            <div class="form-group" id="baseUrlGroup">
+                <label for="base_url">Base URL（可选）</label>
+                <input type="text" class="form-control" id="base_url" name="base_url" 
+                       value="{{ config.base_url|default:'' }}" 
+                       placeholder="例如：https://api.openai.com/v1 或 https://your-proxy.com/v1">
+                <div class="help-text">
+                    用于设置API的基础URL，可用于：
+                    <ul class="mb-0 mt-2">
+                        <li>使用代理访问OpenAI API</li>
+                        <li>使用自定义API端点</li>
+                        <li>留空则使用默认URL</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 启用开关 -->
+            <div class="form-group">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="enabled" name="enabled" 
+                           {% if config.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="enabled">
+                        启用大模型增强功能
+                    </label>
+                </div>
+                <div class="help-text">启用后，Agent将使用大模型进行更智能的分析和推荐</div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="form-group mt-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> 保存配置
+                </button>
+                <button type="button" class="btn btn-info" id="testBtn">
+                    <i class="fas fa-vial"></i> 测试连接
+                </button>
+                <a href="{% url 'agent_dashboard' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回
+                </a>
+            </div>
+
+            <!-- 测试结果 -->
+            <div id="testResult" class="test-result"></div>
+        </form>
+
+        <!-- 配置说明 -->
+        <div class="card bg-light mt-4">
+            <div class="card-body">
+                <h6><i class="fas fa-book"></i> 配置说明</h6>
+                <div id="providerHelp">
+                    <p>请选择大模型提供商以查看详细配置说明。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    // 模型选项
+    const modelOptions = {
+        'openai': [
+            ['gpt-3.5-turbo', 'GPT-3.5 Turbo（推荐，便宜）'],
+            ['gpt-4', 'GPT-4（更强大，更贵）'],
+            ['gpt-4-turbo', 'GPT-4 Turbo'],
+        ],
+        'claude': [
+            ['claude-3-sonnet-20240229', 'Claude 3 Sonnet（推荐）'],
+            ['claude-3-opus-20240229', 'Claude 3 Opus（最强）'],
+            ['claude-3-haiku-20240307', 'Claude 3 Haiku（最快）'],
+        ],
+        'wenxin': [
+            ['ernie-bot-turbo', 'ERNIE-Bot-turbo（推荐）'],
+            ['ernie-bot', 'ERNIE-Bot'],
+            ['ernie-bot-4', 'ERNIE-Bot-4'],
+        ],
+    };
+
+    // 提供商帮助文档
+    const providerHelp = {
+        'none': '<p>不使用大模型，Agent将使用传统算法（TF-IDF、规则匹配等）进行推荐。</p>',
+        'openai': `
+            <h6>OpenAI配置说明：</h6>
+            <ol>
+                <li>访问 <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI API Keys</a> 注册/登录</li>
+                <li>创建API Key（格式：sk-...）</li>
+                <li>充值账户（按使用量付费）</li>
+                <li>推荐模型：GPT-3.5 Turbo（便宜）或 GPT-4（更强）</li>
+            </ol>
+            <p><strong>成本：</strong>约 $0.001/次分析（GPT-3.5）</p>
+        `,
+        'claude': `
+            <h6>Claude配置说明：</h6>
+            <ol>
+                <li>访问 <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a> 注册/登录</li>
+                <li>创建API Key（格式：sk-ant-...）</li>
+                <li>充值账户</li>
+                <li>推荐模型：Claude 3 Sonnet（平衡）</li>
+            </ol>
+            <p><strong>成本：</strong>约 $0.002/次分析</p>
+        `,
+        'wenxin': `
+            <h6>文心一言配置说明：</h6>
+            <ol>
+                <li>访问 <a href="https://cloud.baidu.com/product/wenxinworkshop" target="_blank">百度智能云</a> 注册/登录</li>
+                <li>创建应用获取API Key和Secret Key</li>
+                <li>充值账户</li>
+                <li>推荐模型：ERNIE-Bot-turbo</li>
+            </ol>
+            <p><strong>成本：</strong>约 ¥0.006/次分析</p>
+        `,
+    };
+
+    // 更新模型选项
+    function updateModelOptions() {
+        const provider = $('#provider').val();
+        const modelSelect = $('#model');
+        const currentModel = '{{ config.model }}';
+        
+        modelSelect.empty();
+        
+        if (provider === 'none') {
+            modelSelect.append('<option value="">不使用大模型</option>');
+            $('#apiKeyGroup, #modelGroup, #baseUrlGroup').hide();
+            $('#secretKeyGroup').hide();
+        } else {
+            $('#apiKeyGroup, #modelGroup, #baseUrlGroup').show();
+            
+            if (provider === 'wenxin') {
+                $('#secretKeyGroup').show();
+            } else {
+                $('#secretKeyGroup').hide();
+            }
+            
+            const options = modelOptions[provider] || [];
+            options.forEach(function(opt) {
+                const selected = opt[0] === currentModel ? 'selected' : '';
+                modelSelect.append(`<option value="${opt[0]}" ${selected}>${opt[1]}</option>`);
+            });
+        }
+        
+        // 更新帮助文档
+        $('#providerHelp').html(providerHelp[provider] || '');
+        
+        // 更新获取API Key链接
+        const links = {
+            'openai': 'https://platform.openai.com/api-keys',
+            'claude': 'https://console.anthropic.com/',
+            'wenxin': 'https://cloud.baidu.com/product/wenxinworkshop'
+        };
+        if (links[provider]) {
+            $('#getApiKeyLink').attr('href', links[provider]);
+            $('#getApiKeyLink').show();
+        } else {
+            $('#getApiKeyLink').hide();
+        }
+    }
+
+    // 切换API Key显示/隐藏
+    $('#toggleApiKey').click(function(e) {
+        e.preventDefault();
+        const input = $('#api_key');
+        const type = input.attr('type') === 'password' ? 'text' : 'password';
+        input.attr('type', type);
+        $(this).find('i').toggleClass('fa-eye fa-eye-slash');
+    });
+
+    // 提供商变化时更新选项
+    $('#provider').change(function() {
+        updateModelOptions();
+    });
+
+    // 初始化
+    updateModelOptions();
+
+    // 表单提交
+    $('#llmConfigForm').submit(function(e) {
+        e.preventDefault();
+        
+        const formData = $(this).serialize();
+        
+        $.ajax({
+            url: '{% url "llm_config" %}',
+            type: 'POST',
+            data: formData,
+            success: function(res) {
+                if(res.code === 0) {
+                    alert(res.msg);
+                    location.reload();
+                } else {
+                    alert('保存失败：' + res.msg);
+                }
+            },
+            error: function() {
+                alert('保存失败，请重试');
+            }
+        });
+    });
+
+    // 测试连接
+    $('#testBtn').click(function() {
+        const btn = $(this);
+        const resultDiv = $('#testResult');
+        
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 测试中...');
+        resultDiv.hide();
+        
+        $.ajax({
+            url: '{% url "test_llm_config" %}',
+            type: 'POST',
+            data: {
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            },
+            success: function(res) {
+                btn.prop('disabled', false).html('<i class="fas fa-vial"></i> 测试连接');
+                
+                if(res.code === 0) {
+                    resultDiv.removeClass('error').addClass('success').html(
+                        '<strong>✓ 测试成功！</strong><br>' + 
+                        '响应：' + (res.response || res.msg)
+                    ).show();
+                } else {
+                    resultDiv.removeClass('success').addClass('error').html(
+                        '<strong>✗ 测试失败</strong><br>' + res.msg
+                    ).show();
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false).html('<i class="fas fa-vial"></i> 测试连接');
+                resultDiv.removeClass('success').addClass('error').html(
+                    '<strong>✗ 测试失败</strong><br>网络错误，请检查配置和网络连接'
+                ).show();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

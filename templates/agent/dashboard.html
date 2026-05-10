@@ -1,0 +1,636 @@
+{% extends 'base.html' %}
+
+{% block title %}智能求职助手 - 招聘数据分析系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .agent-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+    .agent-header h2 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: bold;
+    }
+    .agent-header p {
+        margin: 10px 0 0 0;
+        opacity: 0.9;
+    }
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+        transition: transform 0.3s;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    }
+    .stat-card .stat-value {
+        font-size: 32px;
+        font-weight: bold;
+        color: #4e73df;
+        margin: 10px 0;
+    }
+    .stat-card .stat-label {
+        color: #666;
+        font-size: 14px;
+    }
+    .job-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        transition: all 0.3s;
+        border-left: 4px solid #4e73df;
+    }
+    .job-card:hover {
+        box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        transform: translateX(5px);
+    }
+    .job-card.high-score {
+        border-left-color: #1cc88a;
+    }
+    .job-card.medium-score {
+        border-left-color: #f6c23e;
+    }
+    .job-card.low-score {
+        border-left-color: #e74a3b;
+    }
+    .job-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 10px;
+    }
+    .job-salary {
+        color: #FF5722;
+        font-size: 16px;
+        font-weight: bold;
+        margin: 8px 0;
+    }
+    .job-info {
+        color: #666;
+        font-size: 14px;
+        margin: 8px 0;
+    }
+    .job-info span {
+        margin-right: 15px;
+    }
+    .job-company {
+        color: #4e73df;
+        font-size: 14px;
+        margin: 8px 0;
+    }
+    .match-score {
+        display: inline-block;
+        background: #4e73df;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 14px;
+        margin: 10px 0;
+    }
+    .match-score.high {
+        background: #1cc88a;
+    }
+    .match-score.medium {
+        background: #f6c23e;
+    }
+    .match-score.low {
+        background: #e74a3b;
+    }
+    .match-reasons {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #eee;
+    }
+    .match-reasons .badge {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    .action-buttons {
+        margin-top: 15px;
+    }
+    .action-buttons .btn {
+        margin-right: 10px;
+    }
+    .empty-tip {
+        text-align: center;
+        padding: 50px;
+        color: #999;
+    }
+    .empty-tip i {
+        font-size: 60px;
+        margin-bottom: 20px;
+        display: block;
+    }
+    .filter-panel {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        display: none;
+        justify-content: center;
+        align-items: center;
+    }
+    .loading-overlay.show {
+        display: flex;
+    }
+    .loading-spinner {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        text-align: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner">
+        <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+        <p class="mt-3">正在为您智能推荐...</p>
+    </div>
+</div>
+
+<!-- Agent Header -->
+<div class="agent-header">
+    <h2><i class="fas fa-robot"></i> 智能求职助手</h2>
+    <p>AI驱动的个性化职位推荐系统，为您精准匹配最适合的职位</p>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">推荐职位数</div>
+            <div class="stat-value" id="recommendCount">-</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">平均匹配度</div>
+            <div class="stat-value" id="avgScore">-</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">预测薪资</div>
+            <div class="stat-value" id="predictedSalary">-</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">市场职位数</div>
+            <div class="stat-value" id="marketJobs">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Panel -->
+<div class="filter-panel">
+    <div class="row align-items-end">
+        <div class="col-md-3">
+            <label>推荐数量</label>
+            <select class="form-control" id="limitSelect">
+                <option value="10">10个</option>
+                <option value="20" selected>20个</option>
+                <option value="30">30个</option>
+                <option value="50">50个</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label>最低匹配分数</label>
+            <select class="form-control" id="scoreSelect">
+                <option value="40">40分以上</option>
+                <option value="50">50分以上</option>
+                <option value="60" selected>60分以上</option>
+                <option value="70">70分以上</option>
+                <option value="80">80分以上</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <button class="btn btn-primary" id="refreshBtn">
+                <i class="fas fa-sync-alt"></i> 刷新推荐
+            </button>
+            <button class="btn btn-info" id="insightBtn">
+                <i class="fas fa-file-alt"></i> 分析洞察
+            </button>
+            <a href="{% url 'llm_config' %}" class="btn btn-secondary">
+                <i class="fas fa-cog"></i> 大模型配置
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Recommendations List -->
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-star text-warning"></i> 为您推荐的职位
+        </h6>
+    </div>
+    <div class="card-body">
+        <div id="recommendList">
+            <div class="empty-tip">
+                <i class="fas fa-spinner fa-spin fa-3x"></i>
+                <p class="mt-3">正在为您加载推荐...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 分析洞察弹窗（报告 + 建议合并） -->
+<div class="modal fade" id="insightModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">求职分析洞察</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" id="insightTabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#tabReport">
+                            <i class="fas fa-file-alt mr-1"></i>分析报告
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#tabSuggestions">
+                            <i class="fas fa-lightbulb mr-1"></i>申请建议
+                        </a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="tabReport">
+                        <div id="reportContent">
+                            <div class="text-center py-4">
+                                <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                                <p class="mt-2 text-muted">正在生成报告...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="tabSuggestions">
+                        <div id="suggestionsContent">
+                            <div class="text-center py-4">
+                                <i class="fas fa-spinner fa-spin fa-2x text-primary"></i>
+                                <p class="mt-2 text-muted">正在生成建议...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    // 加载推荐
+    function loadRecommendations() {
+        $('#loadingOverlay').addClass('show');
+        var limit = $('#limitSelect').val();
+        var minScore = $('#scoreSelect').val();
+        
+        $.get('/agent/api/recommendations/', {
+            limit: limit,
+            min_score: minScore
+        }, function(res) {
+            $('#loadingOverlay').removeClass('show');
+            
+            if(res.code === 0 && res.data.length > 0) {
+                var html = '';
+                var totalScore = 0;
+                
+                res.data.forEach(function(job) {
+                    totalScore += job.match_score || 0;
+                    
+                    var scoreClass = 'low';
+                    if(job.match_score >= 80) scoreClass = 'high';
+                    else if(job.match_score >= 60) scoreClass = 'medium';
+                    
+                    html += '<div class="job-card ' + scoreClass + '-score">';
+                    html += '<div class="d-flex justify-content-between align-items-start">';
+                    html += '<div style="flex: 1;">';
+                    html += '<div class="job-title">' + (job.name || '未知职位') + '</div>';
+                    html += '<div class="job-salary">' + (job.salary || '薪资面议') + '</div>';
+                    html += '<div class="job-info">';
+                    html += '<span><i class="fas fa-map-marker-alt"></i> ' + (job.city || '未知') + '</span>';
+                    html += '<span><i class="fas fa-graduation-cap"></i> ' + (job.education || '不限') + '</span>';
+                    html += '<span><i class="fas fa-briefcase"></i> ' + (job.experience || '不限') + '</span>';
+                    html += '</div>';
+                    html += '<div class="job-company"><i class="fas fa-building"></i> ' + (job.company || '未知公司') + '</div>';
+                    
+                    if(job.match_reasons && job.match_reasons.length > 0) {
+                        html += '<div class="match-reasons">';
+                        html += '<strong>匹配原因：</strong>';
+                        job.match_reasons.forEach(function(reason) {
+                            html += '<span class="badge badge-info">' + reason + '</span>';
+                        });
+                        html += '</div>';
+                    }
+
+                    if(job.improvement_suggestions && job.improvement_suggestions.length > 0) {
+                        html += '<div class="match-reasons">';
+                        html += '<strong>改进建议：</strong>';
+                        job.improvement_suggestions.forEach(function(tip) {
+                            html += '<span class="badge badge-warning">' + tip + '</span>';
+                        });
+                        html += '</div>';
+                    }
+                    
+                    html += '</div>';
+                    html += '<div class="text-right">';
+                    html += '<div class="match-score ' + scoreClass + '">' + (job.match_score || 0) + '分</div>';
+                    html += '<div class="job-actions">';
+                    html += '<button class="btn btn-sm btn-primary send-btn" data-id="' + job.job_id
+                        + '" data-href="' + encodeURIComponent(job.href || '') + '">投递</button>';
+                    html += '<button class="btn btn-sm btn-success interested-btn" data-id="' + job.job_id + '">感兴趣</button>';
+                    html += '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                });
+                
+                $('#recommendList').html(html);
+                
+                // 更新统计
+                $('#recommendCount').text(res.data.length);
+                $('#avgScore').text(Math.round(totalScore / res.data.length) + '分');
+            } else {
+                $('#recommendList').html('<div class="empty-tip"><i class="fas fa-inbox fa-3x"></i><p class="mt-3">' + (res.msg || '暂无推荐数据，请先设置求职意向') + '</p><a href="/user_info/" class="btn btn-primary">设置求职意向</a></div>');
+                $('#recommendCount').text('0');
+                $('#avgScore').text('-');
+            }
+        }).fail(function() {
+            $('#loadingOverlay').removeClass('show');
+            $('#recommendList').html('<div class="empty-tip"><i class="fas fa-exclamation-circle fa-3x text-danger"></i><p class="mt-3">加载失败，请刷新重试</p></div>');
+        });
+    }
+    
+    // 加载薪资预测和市场数据
+    function loadMarketData() {
+        $.get('/agent/api/salary-prediction/', function(res) {
+            if(res.code === 0 && res.data) {
+                $('#predictedSalary').text(res.data.predicted + 'K');
+            }
+        });
+        
+        $.get('/agent/api/debug/', function(res) {
+            if(res.code === 0 && res.data) {
+                $('#marketJobs').text(res.data.total_jobs_in_db || '-');
+            }
+        });
+    }
+    
+    // 生成报告
+    function generateReport() {
+        $('#reportContent').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><p class="mt-2 text-muted">正在生成报告...</p></div>');
+        
+        $.get('/agent/api/report/', function(res) {
+            if(res.code === 0 && res.data) {
+                var html = '<div class="report-content">';
+                
+                // 用户画像
+                if(res.data.profile) {
+                    html += '<h6>个人画像</h6>';
+                    html += '<ul>';
+                    html += '<li>技能：' + (res.data.profile.skills.join(', ') || '未设置') + '</li>';
+                    html += '<li>目标城市：' + (res.data.profile.target_cities.join(', ') || '未设置') + '</li>';
+                    html += '<li>期望薪资：' + res.data.profile.salary_range[0] + 'K - ' + res.data.profile.salary_range[1] + 'K</li>';
+                    html += '<li>已投递职位：' + res.data.profile.applied_jobs + '个</li>';
+                    html += '</ul>';
+                }
+                
+                // 薪资预测
+                if(res.data.salary_prediction) {
+                    html += '<hr><h6>AI薪资预测</h6>';
+                    html += '<p>预测薪资：<strong>' + res.data.salary_prediction.predicted + 'K</strong></p>';
+                    html += '<p>合理范围：' + res.data.salary_prediction.lower + 'K - ' + res.data.salary_prediction.upper + 'K</p>';
+                }
+                
+                // 市场分析
+                if(res.data.market_analysis && res.data.market_analysis.total_jobs) {
+                    html += '<hr><h6>市场分析</h6>';
+                    html += '<ul>';
+                    html += '<li>技能：' + res.data.market_analysis.skill + '</li>';
+                    html += '<li>市场职位数：' + res.data.market_analysis.total_jobs + '个</li>';
+                    html += '<li>平均薪资：' + res.data.market_analysis.avg_salary + 'K</li>';
+                    if(res.data.market_analysis.top_cities) {
+                        html += '<li>热门城市：' + res.data.market_analysis.top_cities.join(', ') + '</li>';
+                    }
+                    html += '</ul>';
+                }
+                
+                // 推荐职位
+                if(res.data.recommendations && res.data.recommendations.length > 0) {
+                    html += '<hr><h6>推荐职位（Top 10）</h6>';
+                    html += '<ul>';
+                    res.data.recommendations.forEach(function(job) {
+                        html += '<li>' + job.name + ' - ' + job.company + ' (' + job.match_score + '分)</li>';
+                    });
+                    html += '</ul>';
+                }
+                
+                html += '</div>';
+                $('#reportContent').html(html);
+            } else {
+                $('#reportContent').html('<div class="alert alert-danger">' + (res.msg || '生成报告失败') + '</div>');
+            }
+        }).fail(function() {
+            $('#reportContent').html('<div class="alert alert-danger">生成报告失败，请重试</div>');
+        });
+    }
+    
+    // 获取申请建议
+    function getSuggestions() {
+        $('#suggestionsContent').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><p class="mt-2 text-muted">正在生成建议...</p></div>');
+        
+        $.get('/agent/api/suggestions/', function(res) {
+            if(res.code === 0 && res.data.length > 0) {
+                var html = '';
+                res.data.forEach(function(suggestion) {
+                    html += '<div class="card mb-3">';
+                    html += '<div class="card-body">';
+                    html += '<h6 class="card-title">' + suggestion.job.name + '</h6>';
+                    html += '<p class="card-text text-muted">' + suggestion.job.company + '</p>';
+                    html += '<p><strong>优先级：</strong><span class="badge badge-' + (suggestion.priority === 'high' ? 'danger' : suggestion.priority === 'medium' ? 'warning' : 'secondary') + '">' + (suggestion.priority === 'high' ? '高' : suggestion.priority === 'medium' ? '中' : '低') + '</span></p>';
+                    html += '<p><strong>建议：</strong>' + (suggestion.action === 'apply' ? '立即申请' : '仔细审查') + '</p>';
+                    if(suggestion.tips && suggestion.tips.length > 0) {
+                        html += '<ul class="mb-0">';
+                        suggestion.tips.forEach(function(tip) {
+                            html += '<li>' + tip + '</li>';
+                        });
+                        html += '</ul>';
+                    }
+                    html += '</div>';
+                    html += '</div>';
+                });
+                $('#suggestionsContent').html(html);
+            } else {
+                $('#suggestionsContent').html('<div class="alert alert-warning">' + (res.msg || '暂无建议') + '</div>');
+            }
+        }).fail(function() {
+            $('#suggestionsContent').html('<div class="alert alert-danger">获取建议失败，请重试</div>');
+        });
+    }
+    
+    // 事件绑定
+    $('#refreshBtn').click(function() {
+        loadRecommendations();
+    });
+    
+    $('#insightBtn').click(function() {
+        $('#insightModal').modal({backdrop: false, keyboard: true});
+        // 同时加载报告和建议
+        generateReport();
+        getSuggestions();
+    });
+    
+    // 切换 tab 时如果内容已加载则不重复请求
+    $('#insightTabs a[href="#tabSuggestions"]').on('shown.bs.tab', function() {
+        // 已在 insightBtn click 时一并触发，无需重复
+    });
+    
+    $('#limitSelect, #scoreSelect').change(function() {
+        loadRecommendations();
+    });
+    
+    // ── Toast 提示函数 ────────────────────────────────────────
+    function showToast(message, type) {
+        var bgColor = type === 'success' ? '#1cc88a' : 
+                      type === 'error' ? '#e74a3b' : '#36b9cc';
+        var icon = type === 'success' ? 'fa-check-circle' :
+                   type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+        
+        var toast = $('<div>')
+            .css({
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                background: bgColor,
+                color: 'white',
+                padding: '12px 20px',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                zIndex: 9999,
+                fontSize: '14px',
+                fontWeight: '500',
+                minWidth: '200px'
+            })
+            .html('<i class="fas ' + icon + ' mr-2"></i>' + message)
+            .appendTo('body');
+        
+        setTimeout(function() {
+            toast.fadeOut(300, function() {
+                $(this).remove();
+            });
+        }, 3000);
+    }
+    
+    // 投递职位：智能处理有无链接的情况
+    $(document).on('click', '.send-btn', function() {
+        var jobId = $(this).data('id');
+        var href = $(this).data('href') ? decodeURIComponent($(this).data('href')) : '';
+        var btn = $(this);
+        
+        if (href && href !== 'undefined' && href !== 'null') {
+            // 情况1: 有原始链接 - 直接打开 + 自动记录
+            window.open(href, '_blank');
+            
+            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 记录中...');
+            
+            $.ajax({
+                url: '/job/send/',
+                type: 'POST',
+                data: {
+                    job_id: jobId,
+                    action: 'send',
+                    csrfmiddlewaretoken: '{{ csrf_token }}'
+                },
+                success: function(res) {
+                    if(res.code === 0) {
+                        btn.text('已投递')
+                           .removeClass('btn-primary')
+                           .addClass('btn-secondary')
+                           .prop('disabled', true)
+                           .removeClass('send-btn');
+                        
+                        showToast('✓ 投递成功，已记录到系统', 'success');
+                        
+                        // 提交反馈
+                        $.post('/agent/api/feedback/', {
+                            job_id: jobId,
+                            feedback_type: 'applied',
+                            csrfmiddlewaretoken: '{{ csrf_token }}'
+                        });
+                    } else {
+                        btn.text('投递')
+                           .removeClass('btn-secondary')
+                           .addClass('btn-primary')
+                           .prop('disabled', false);
+                        
+                        showToast('记录失败: ' + res.msg, 'error');
+                    }
+                },
+                error: function(xhr) {
+                    btn.text('投递')
+                       .removeClass('btn-secondary')
+                       .addClass('btn-primary')
+                       .prop('disabled', false);
+                    
+                    showToast('网络错误，请稍后重试', 'error');
+                }
+            });
+        } else {
+            // 情况2: 无原始链接 - 提示用户
+            showToast('该职位暂无直接投递链接，请在招聘平台搜索', 'error');
+        }
+    });
+    
+    // 感兴趣
+    $(document).on('click', '.interested-btn', function() {
+        var jobId = $(this).data('id');
+        var btn = $(this);
+        
+        $.post('/agent/api/feedback/', {
+            job_id: jobId,
+            feedback_type: 'interested',
+            csrfmiddlewaretoken: '{{ csrf_token }}'
+        }, function(res) {
+            if(res.code === 0) {
+                alert('反馈已提交，感谢您的参与！');
+                btn.text('已标记').removeClass('btn-success').addClass('btn-info');
+            }
+        });
+    });
+    
+    // 初始化加载
+    loadRecommendations();
+    loadMarketData();
+});
+</script>
+{% endblock %}
+

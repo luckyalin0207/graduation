@@ -1,0 +1,354 @@
+{% extends 'base.html' %}
+
+{% block title %}个人信息 - 招聘数据分析系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">个人信息</h6>
+            </div>
+            <div class="card-body">
+                <form id="userForm">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label>账号</label>
+                        <input type="text" value="{{ user.user_id }}" class="form-control" disabled>
+                    </div>
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" name="user_name" value="{{ user.user_name }}" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>邮箱</label>
+                        <input type="email" name="email" value="{{ user.email|default:'' }}" placeholder="请输入邮箱" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>手机号</label>
+                        <input type="text" name="phone" value="{{ user.phone|default:'' }}" placeholder="请输入手机号" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>注册时间</label>
+                        <input type="text" value="{{ user.created_at|date:'Y-m-d H:i' }}" class="form-control" disabled>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="saveBtn">保存修改</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">上传简历</h6>
+                <span id="resumeStatus" class="text-muted small"></span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    支持 PDF / Word 格式，上传后自动解析姓名、技能、学历等信息，
+                    并在未设置求职意向时<strong>自动填充</strong>。
+                </p>
+                <div class="custom-file mb-3">
+                    <input type="file" class="custom-file-input" id="resumeFile" accept=".pdf,.docx,.doc">
+                    <label class="custom-file-label" for="resumeFile">选择简历文件</label>
+                </div>
+                <button class="btn btn-success btn-block" id="uploadBtn">
+                    <i class="fas fa-upload mr-1"></i>上传并解析
+                </button>
+                <!-- 操作按钮区 -->
+                <div class="mt-3 d-flex" id="resumeActions" style="display:none!important;">
+                    <button class="btn btn-outline-primary btn-sm flex-fill mr-1" id="matchBtn">
+                        <i class="fas fa-search mr-1"></i>匹配职位
+                    </button>
+                    <button class="btn btn-outline-info btn-sm flex-fill mr-1" id="scoreBtn">
+                        <i class="fas fa-star mr-1"></i>简历评分
+                    </button>
+                    <a id="downloadBtn" class="btn btn-outline-secondary btn-sm flex-fill" href="#" onclick="doDownload(); return false;">
+                        <i class="fas fa-download mr-1"></i>下载简历
+                    </a>
+                </div>
+                <div id="resumeResult" class="mt-3" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 匹配职位弹窗 -->
+<div class="modal fade" id="matchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header py-3">
+                <h5 class="modal-title"><i class="fas fa-search mr-2 text-primary"></i>为你匹配的职位</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body" id="matchBody">
+                <div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 简历评分弹窗 -->
+<div class="modal fade" id="scoreModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header py-3">
+                <h5 class="modal-title"><i class="fas fa-star mr-2 text-warning"></i>简历评分报告</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body" id="scoreBody">
+                <div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    $('#saveBtn').click(function(){
+        $.ajax({
+            url: '{% url "user_info" %}',
+            type: 'POST',
+            data: $('#userForm').serialize(),
+            success: function(res){ alert(res.msg); },
+            error: function(){ alert('保存失败，请重试'); }
+        });
+    });
+
+    // ── 页面加载时读取已保存的简历信息 ──────────────────────
+    $.get('{% url "get_resume_info" %}', function(res) {
+        if (res.code === 0 && res.data) {
+            var d = res.data;
+            if (d.resume_name) {
+                $('#resumeStatus').html(
+                    '<i class="fas fa-file-alt mr-1 text-success"></i>' + d.resume_name +
+                    '<span class="text-muted ml-2">(' + (d.resume_updated_at || '') + ')</span>'
+                );
+                $('#resumeActions').show().css('display', 'flex');
+                renderResumeData(d, false);
+            }
+        }
+    });
+
+    // 文件名显示
+    $('#resumeFile').change(function(){
+        var name = $(this).val().split('\\').pop();
+        $(this).next('.custom-file-label').text(name || '选择简历文件');
+    });
+
+    // ── 上传简历 ──────────────────────────────────────────
+    $('#uploadBtn').click(function(){
+        var file = $('#resumeFile')[0].files[0];
+        if (!file) { alert('请先选择简历文件'); return; }
+        var btn = $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>解析中...');
+        var fd = new FormData();
+        fd.append('resume', file);
+        fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        $.ajax({
+            url: '{% url "upload_resume" %}',
+            type: 'POST', data: fd, processData: false, contentType: false,
+            success: function(res){
+                btn.prop('disabled', false).html('<i class="fas fa-upload mr-1"></i>上传并解析');
+                if (res.code === 0) {
+                    var d = res.data;
+                    $('#resumeStatus').html(
+                        '<i class="fas fa-check-circle mr-1 text-success"></i>' + file.name +
+                        '<span class="text-muted ml-2">刚刚上传</span>'
+                    );
+                    $('#resumeActions').show().css('display', 'flex');
+                    renderResumeData(d, true, res.msg);
+                    if (d.name) $('input[name="user_name"]').val(d.name);
+                } else {
+                    $('#resumeResult').html('<div class="alert alert-danger">' + res.msg + '</div>').show();
+                }
+            },
+            error: function(){
+                btn.prop('disabled', false).html('<i class="fas fa-upload mr-1"></i>上传并解析');
+                alert('上传失败');
+            }
+        });
+    });
+
+    // ── 渲染简历数据 ──────────────────────────────────────
+    function renderResumeData(d, showMsg, msg) {
+        var html = '';
+        if (showMsg && msg) {
+            html += '<div class="alert alert-success mb-3 py-2"><i class="fas fa-check-circle mr-1"></i><strong>' + msg + '</strong></div>';
+        }
+
+        // 保存统计
+        if (d.work_count > 0 || d.edu_count > 0) {
+            html += '<div class="alert alert-info py-2 mb-3 small">';
+            html += '<i class="fas fa-database mr-1"></i>已保存：';
+            if (d.work_count) html += d.work_count + ' 条工作经历 ';
+            if (d.edu_count) html += d.edu_count + ' 条教育经历';
+            html += '</div>';
+        }
+
+        // 基本信息
+        var basicItems = [];
+        if (d.name) basicItems.push(['姓名', d.name]);
+        if (d.education) basicItems.push(['学历', d.education]);
+        if (d.experience_years != null) basicItems.push(['工作年限', d.experience_years + ' 年']);
+        if (d.phone) basicItems.push(['手机', d.phone]);
+        if (d.email) basicItems.push(['邮箱', d.email]);
+        if (basicItems.length) {
+            html += '<div class="card mb-3"><div class="card-header py-2 small font-weight-bold">基本信息</div><div class="card-body py-2">';
+            html += '<div class="row">';
+            basicItems.forEach(function(item) {
+                html += '<div class="col-6 mb-1 small"><span class="text-muted">' + item[0] + '：</span>' + item[1] + '</div>';
+            });
+            html += '</div></div></div>';
+        }
+
+        // 技能
+        var skills = d.skills || [];
+        if (skills.length) {
+            html += '<div class="card mb-3"><div class="card-header py-2 small font-weight-bold">技能标签</div><div class="card-body py-2">';
+            skills.forEach(function(s){ html += '<span class="badge badge-primary mr-1 mb-1">' + s + '</span>'; });
+            html += '</div></div>';
+        }
+
+        // 工作经历
+        var works = d.work_experience || [];
+        if (works.length) {
+            html += '<div class="card mb-3"><div class="card-header py-2 small font-weight-bold">工作经历</div><div class="card-body py-2 px-3">';
+            works.forEach(function(w, i){
+                html += '<div class="' + (i > 0 ? 'mt-3 pt-3 border-top' : '') + '">';
+                html += '<div class="d-flex justify-content-between align-items-start">';
+                html += '<strong class="small">' + (w.company || w.company_name || '') + '</strong>';
+                var period = [w.start || w.start_date, w.end || w.end_date].filter(Boolean).join(' ~ ');
+                if (period) html += '<small class="text-muted">' + period + '</small>';
+                html += '</div>';
+                if (w.title) html += '<div class="text-primary" style="font-size:12px;">' + w.title + '</div>';
+                if (w.description) html += '<div class="text-muted mt-1" style="font-size:12px;white-space:pre-line">' + (w.description||'').substring(0,200) + '</div>';
+                html += '</div>';
+            });
+            html += '</div></div>';
+        }
+
+        // 教育经历
+        var edus = d.education_list || d.educations || [];
+        if (edus.length) {
+            html += '<div class="card mb-3"><div class="card-header py-2 small font-weight-bold">教育经历</div><div class="card-body py-2 px-3">';
+            edus.forEach(function(e, i){
+                html += '<div class="' + (i > 0 ? 'mt-2 pt-2 border-top' : '') + '">';
+                html += '<div class="d-flex justify-content-between align-items-start">';
+                html += '<strong class="small">' + (e.school || '') + '</strong>';
+                var period = [e.start || e.start_date, e.end || e.end_date].filter(Boolean).join(' ~ ');
+                if (period) html += '<small class="text-muted">' + period + '</small>';
+                html += '</div>';
+                var meta = [e.degree, e.major].filter(Boolean).join(' · ');
+                if (meta) html += '<div class="text-muted" style="font-size:12px;">' + meta + '</div>';
+                html += '</div>';
+            });
+            html += '</div></div>';
+        }
+
+        // 项目经历
+        var projects = d.projects || [];
+        if (projects.length) {
+            html += '<div class="card mb-3"><div class="card-header py-2 small font-weight-bold">项目经历</div><div class="card-body py-2 px-3">';
+            projects.forEach(function(p, i){
+                html += '<div class="' + (i > 0 ? 'mt-2 pt-2 border-top' : '') + '">';
+                html += '<strong class="small">' + (p.name || '') + '</strong>';
+                if (p.description) html += '<div class="text-muted mt-1" style="font-size:12px;white-space:pre-line">' + p.description.substring(0,150) + '</div>';
+                html += '</div>';
+            });
+            html += '</div></div>';
+        }
+
+        if (d.auto_filled) {
+            html += '<div class="alert alert-info py-2 small"><i class="fas fa-magic mr-1"></i>已自动填充求职意向，<a href="{% url "job_expect" %}">点击查看</a></div>';
+        }
+
+        if (html) $('#resumeResult').html(html).show();
+    }
+
+    // ── 下载简历 ──────────────────────────────────────────
+    function doDownload() {
+        // 先检查是否有文件，有则直接跳转下载
+        $.get('{% url "get_resume_info" %}', function(res) {
+            if (res.code === 0 && res.data && res.data.resume_name) {
+                window.location.href = '{% url "resume_download" %}';
+            } else {
+                alert('未上传简历，请先上传');
+            }
+        });
+    }
+
+    // ── 匹配职位 ──────────────────────────────────────────
+    $('#matchBtn').click(function() {
+        $('#matchModal').modal({backdrop: false, keyboard: true});
+        $('#matchBody').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><p class="mt-2 text-muted">正在匹配...</p></div>');
+        $.get('{% url "resume_match_jobs" %}', {limit: 10}, function(res) {
+            if (res.code !== 0 || !res.data.length) {
+                $('#matchBody').html('<div class="alert alert-warning">暂无匹配职位，请先设置求职意向或上传简历</div>');
+                return;
+            }
+            var html = '<p class="text-muted small mb-3">根据你的技能 <strong>' + (res.skills || '') + '</strong> 匹配到以下职位：</p>';
+            res.data.forEach(function(job) {
+                var score = job.match_score || 0;
+                var color = score >= 70 ? 'success' : score >= 40 ? 'warning' : 'secondary';
+                html += '<div class="d-flex align-items-start border-bottom py-2">';
+                html += '<div class="flex-grow-1">';
+                html += '<div class="font-weight-bold">' + (job.name || '') + '</div>';
+                html += '<div class="text-muted small">' + (job.company || '') + ' · ' + (job.city || '') + '</div>';
+                html += '<div class="text-danger small">' + (job.salary || '薪资面议') + '</div>';
+                html += '</div>';
+                html += '<span class="badge badge-' + color + ' ml-2 align-self-center">' + score + '分</span>';
+                html += '</div>';
+            });
+            html += '<div class="text-center mt-3"><a href="{% url "job_list" %}" class="btn btn-primary btn-sm">查看全部职位</a></div>';
+            $('#matchBody').html(html);
+        });
+    });
+
+    // ── 简历评分 ──────────────────────────────────────────
+    $('#scoreBtn').click(function() {
+        $('#scoreModal').modal({backdrop: false, keyboard: true});
+        $('#scoreBody').html('<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><p class="mt-2 text-muted">评分中...</p></div>');
+        $.get('{% url "resume_score" %}', function(res) {
+            if (res.code !== 0) {
+                $('#scoreBody').html('<div class="alert alert-danger">' + res.msg + '</div>');
+                return;
+            }
+            var d = res.data;
+            var levelColor = d.total_score >= 80 ? 'success' : d.total_score >= 60 ? 'warning' : 'danger';
+            var html = '<div class="text-center mb-4">';
+            html += '<div style="font-size:56px;font-weight:bold;" class="text-' + levelColor + '">' + d.total_score + '</div>';
+            html += '<div class="text-muted">综合评分 / 100 &nbsp;<span class="badge badge-' + levelColor + '">' + d.level + '</span></div>';
+            html += '</div>';
+            // 各维度
+            Object.entries(d.scores).forEach(function([name, item]) {
+                var pct = Math.round(item.score / item.max * 100);
+                html += '<div class="mb-3">';
+                html += '<div class="d-flex justify-content-between mb-1"><span class="small font-weight-bold">' + name + '</span><span class="small text-muted">' + item.score + '/' + item.max + '</span></div>';
+                html += '<div class="progress" style="height:8px;"><div class="progress-bar bg-primary" style="width:' + pct + '%"></div></div>';
+                html += '<div class="text-muted" style="font-size:11px;margin-top:2px;">' + item.detail + '</div>';
+                html += '</div>';
+            });
+            // 建议
+            if (d.suggestions && d.suggestions.length) {
+                html += '<hr><div class="small"><strong>改进建议：</strong><ul class="mt-1 pl-3">';
+                d.suggestions.forEach(function(s){ html += '<li class="text-muted">' + s + '</li>'; });
+                html += '</ul></div>';
+            }
+            // 市场热门技能
+            if (d.top_market_skills && d.top_market_skills.length) {
+                html += '<hr><div class="small"><strong>市场热门技能：</strong><div class="mt-1">';
+                d.top_market_skills.forEach(function(s) {
+                    var has = d.user_skills && d.user_skills.includes(s.toLowerCase());
+                    html += '<span class="badge badge-' + (has ? 'success' : 'light') + ' mr-1 mb-1">' + s + (has ? ' ✓' : '') + '</span>';
+                });
+                html += '</div></div>';
+            }
+            $('#scoreBody').html(html);
+        });
+    });
+});
+</script>
+{% endblock %}

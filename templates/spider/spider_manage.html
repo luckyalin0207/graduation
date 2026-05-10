@@ -1,0 +1,841 @@
+{% extends 'base.html' %}
+
+{% block title %}爬虫管理 - 招聘数据分析系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 左：状态卡片 + 说明 -->
+    <div class="col-lg-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">爬虫状态</h6>
+                <span id="statusDot" class="{% if spider_info.status == 1 %}text-danger{% else %}text-success{% endif %}">
+                    ● {% if spider_info.status == 1 %}运行中{% else %}空闲{% endif %}
+                </span>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        <tr><td class="text-muted" style="width:110px;">爬虫名称</td><td>{{ spider_info.spider_name }}</td></tr>
+                        <tr><td class="text-muted">目标网站</td><td>{{ spider_info.target_site }}</td></tr>
+                        <tr><td class="text-muted">运行状态</td><td id="spiderStatus">
+                            {% if spider_info.status == 1 %}
+                            <span class="badge badge-danger">运行中</span>
+                            {% else %}
+                            <span class="badge badge-success">空闲</span>
+                            {% endif %}
+                        </td></tr>
+                        <tr><td class="text-muted">累计爬取</td><td><span id="totalCount">{{ spider_info.total_count }}</span> 条</td></tr>
+                        <tr><td class="text-muted">运行次数</td><td><span id="runCount">{{ spider_info.run_count }}</span> 次</td></tr>
+                        <tr><td class="text-muted">最后运行</td><td id="lastRunTime">{{ spider_info.last_run_time|date:"Y-m-d H:i:s"|default:"暂未运行" }}</td></tr>
+                        <tr><td class="text-muted">数据来源</td><td id="sourceStats"><span class="text-muted small">加载中...</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 使用说明 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">定时任务</h6>
+            </div>
+            <div class="card-body p-0">
+                <div id="schedulerStatus" class="px-3 py-2 border-bottom">
+                    <span class="text-muted small">加载中...</span>
+                </div>
+                <div id="schedulerJobs" class="p-0"></div>
+            </div>
+        </div>
+
+        <!-- 模式说明 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">爬取模式说明</h6>
+            </div>
+            <div class="card-body p-3">
+                <!-- 模式 A -->
+                <div class="d-flex align-items-start mb-3">
+                    <span class="badge badge-success mr-2 mt-1" style="min-width:20px;">A</span>
+                    <div>
+                        <strong style="font-size:13px;">jshook 浏览器模式（推荐）</strong>
+                        <p class="mb-0 text-muted" style="font-size:12px;">
+                            通过 Kiro 内置的 jshook 浏览器直接调用 51job 页面的 axios，
+                            <strong>无需 Cookie</strong>，自动处理签名验证，速度快，不被拦截。
+                            需要 jshook 已打开 51job 搜索页。
+                        </p>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <!-- 模式 B -->
+                <div class="d-flex align-items-start mb-3">
+                    <span class="badge badge-secondary mr-2 mt-1" style="min-width:20px;">B</span>
+                    <div>
+                        <strong style="font-size:13px;">requests 模式（降级）</strong>
+                        <p class="mb-0 text-muted" style="font-size:12px;">
+                            直接调用 51job API，<strong>需要填写 Cookie</strong>。
+                            jshook 不可用时自动切换到此模式。
+                            Cookie 过期后需重新获取。
+                        </p>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <!-- 模式 C -->
+                <div class="d-flex align-items-start">
+                    <span class="badge badge-warning mr-2 mt-1" style="min-width:20px;">C</span>
+                    <div>
+                        <strong style="font-size:13px;">BOSS 直聘模式</strong>
+                        <p class="mb-0 text-muted" style="font-size:12px;">
+                            通过 jshook 浏览器调用 BOSS 直聘搜索接口。
+                            点击"一键打开"启动浏览器后，<strong>需要在浏览器中登录 BOSS 直聘账号</strong>，
+                            登录后可爬取多页数据（未登录仅限第1页15条）。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快速操作 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">快速操作</h6>
+            </div>
+            <div class="card-body">
+                <a href="{% url 'job_list' %}" class="btn btn-sm btn-outline-primary btn-block mb-2">
+                    <i class="fas fa-list mr-1"></i>查看职位列表
+                </a>
+                <a href="{% url 'import_csv' %}" class="btn btn-sm btn-outline-warning btn-block">
+                    <i class="fas fa-file-csv mr-1"></i>CSV 批量导入
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右：控制面板 -->
+    <div class="col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">启动爬虫</h6>
+                <!-- 当前模式指示 -->
+                <span id="modeIndicator" class="badge badge-light" style="font-size:11px;">
+                    检测模式中...
+                </span>
+            </div>
+            <div class="card-body">
+                <form id="spiderForm">
+                    {% csrf_token %}
+
+                    <!-- 新增：随机爬取模式开关 -->
+                    <div class="form-group">
+                        <div class="custom-control custom-switch">
+                            <input type="checkbox" class="custom-control-input" id="useRandomMode">
+                            <label class="custom-control-label" for="useRandomMode">
+                                <strong>🎲 随机爬取模式</strong>
+                                <small class="text-muted ml-2">从80+关键词池随机选择，数据更多样化</small>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 新增：随机数量选择（仅在随机模式下显示） -->
+                    <div class="form-group" id="randomCountGroup" style="display:none;">
+                        <label>随机关键词数量</label>
+                        <div class="btn-group btn-group-sm d-flex" role="group">
+                            <button type="button" class="btn btn-outline-secondary random-count-btn" data-count="3">3个</button>
+                            <button type="button" class="btn btn-outline-secondary random-count-btn active" data-count="5">5个（推荐）</button>
+                            <button type="button" class="btn btn-outline-secondary random-count-btn" data-count="8">8个</button>
+                            <button type="button" class="btn btn-outline-secondary random-count-btn" data-count="10">10个</button>
+                        </div>
+                        <input type="hidden" id="randomCountValue" value="5">
+                        <small class="text-muted d-block mt-1">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            随机模式会从技术、产品、运营、设计、职能等多个领域随机选择关键词
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="d-flex justify-content-between align-items-center">
+                            <span>搜索关键词 <small class="text-muted" id="keywordHint">（多个用英文逗号分隔）</small></span>
+                            <button type="button" class="btn btn-sm btn-outline-info" id="randomKeywordBtn">
+                                <i class="fas fa-random mr-1"></i>随机选取
+                            </button>
+                        </label>
+                        <input type="text" name="keyword" id="keywordInput" value="Python" class="form-control"
+                               placeholder="如：Python,Java,前端,数据分析,Go">
+                        <div class="mt-2 kw-tags-wrap">
+                            <div class="mb-1">
+                                <small class="text-muted mr-1">技术开发：</small>
+                                <span class="kw-tag badge badge-light mr-1">Python</span>
+                                <span class="kw-tag badge badge-light mr-1">Java</span>
+                                <span class="kw-tag badge badge-light mr-1">前端开发</span>
+                                <span class="kw-tag badge badge-light mr-1">Go</span>
+                                <span class="kw-tag badge badge-light mr-1">C++</span>
+                                <span class="kw-tag badge badge-light mr-1">大数据</span>
+                                <span class="kw-tag badge badge-light mr-1">算法工程师</span>
+                                <span class="kw-tag badge badge-light mr-1">AI工程师</span>
+                            </div>
+                            <div class="mb-1">
+                                <small class="text-muted mr-1">产品运营：</small>
+                                <span class="kw-tag badge badge-light mr-1">产品经理</span>
+                                <span class="kw-tag badge badge-light mr-1">运营</span>
+                                <span class="kw-tag badge badge-light mr-1">市场营销</span>
+                                <span class="kw-tag badge badge-light mr-1">新媒体</span>
+                                <span class="kw-tag badge badge-light mr-1">电商运营</span>
+                            </div>
+                            <div class="mb-1">
+                                <small class="text-muted mr-1">设计创意：</small>
+                                <span class="kw-tag badge badge-light mr-1">UI设计</span>
+                                <span class="kw-tag badge badge-light mr-1">平面设计</span>
+                                <span class="kw-tag badge badge-light mr-1">视频剪辑</span>
+                            </div>
+                            <div>
+                                <small class="text-muted mr-1">职能管理：</small>
+                                <span class="kw-tag badge badge-light mr-1">人力资源</span>
+                                <span class="kw-tag badge badge-light mr-1">财务会计</span>
+                                <span class="kw-tag badge badge-light mr-1">项目管理</span>
+                                <span class="kw-tag badge badge-light mr-1">销售</span>
+                                <span class="kw-tag badge badge-light mr-1">客服</span>
+                            </div>
+                        </div>
+                        <small class="text-muted">点击标签快速添加，或点击"随机选取"自动填入多样化关键词</small>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>每个关键词爬取页数</label>
+                            <select name="pages" class="form-control">
+                                <option value="1">1 页（约 20 条）</option>
+                                <option value="3" selected>3 页（约 60 条）</option>
+                                <option value="5">5 页（约 100 条）</option>
+                                <option value="10">10 页（约 200 条）</option>
+                                <option value="20">20 页（约 400 条）</option>
+                                <option value="50">50 页（约 1000 条）</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>并行进程数</label>
+                            <select name="max_workers" class="form-control">
+                                <option value="1">1 个（顺序）</option>
+                                <option value="2">2 个并行</option>
+                                <option value="3" selected>3 个并行（推荐）</option>
+                                <option value="4">4 个并行</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Cookie 区域（仅 requests 模式需要） -->
+                    <div class="form-group" id="cookieSection">
+                        <label>
+                            51job Cookie
+                            <small class="text-muted ml-1" id="cookieHint">（jshook 模式下无需填写）</small>
+                            <a href="#" class="ml-2" style="font-size:12px;" data-toggle="modal" data-target="#cookieHelpModal">
+                                <i class="fas fa-question-circle"></i> 如何获取？
+                            </a>
+                        </label>
+                        <textarea name="cookie" id="cookieInput" class="form-control" rows="2"
+                                  placeholder="jshook 浏览器模式下留空即可；requests 模式下需填入 Cookie"></textarea>
+                    </div>
+
+                    <div class="form-group mb-0">
+                        <button type="button" class="btn btn-primary" id="startBtn">
+                            <i class="fas fa-play mr-1"></i>启动（51job）
+                        </button>
+                        <button type="button" class="btn btn-outline-success ml-2" id="startBossBtn">
+                            <i class="fas fa-play mr-1"></i>启动（BOSS直聘）
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary ml-2" id="refreshBtn">
+                            <i class="fas fa-sync-alt mr-1"></i>刷新状态
+                        </button>
+                        <div class="mt-2">
+                            <small id="bossStatusHint" class="text-muted">
+                                <i class="fas fa-circle-notch fa-spin mr-1"></i>检测 BOSS 直聘状态...
+                            </small>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- 进度条 -->
+                <div id="progressWrap" class="mt-3" style="display:none;">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small class="text-muted" id="progressLabel">正在爬取...</small>
+                        <small class="text-muted" id="elapsedTime"></small>
+                    </div>
+                    <div class="progress" style="height:6px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                             style="width:100%"></div>
+                    </div>
+                </div>
+
+                <!-- 实时日志 -->
+                <div id="spiderLog" class="mt-3 p-3 rounded"
+                     style="background:#1e1e1e; color:#d4d4d4; font-size:12px; font-family:monospace;
+                            min-height:120px; max-height:320px; overflow-y:auto; display:none;">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.kw-tag {
+  cursor: pointer;
+  transition: all .15s;
+  user-select: none;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+.kw-tag:hover { opacity: .8; }
+.kw-tags-wrap { line-height: 2; }
+
+/* 随机模式样式 */
+.custom-control-label strong {
+  font-size: 14px;
+}
+.random-count-btn {
+  flex: 1;
+  transition: all 0.2s;
+}
+.random-count-btn.active {
+  background-color: #4e73df !important;
+  border-color: #4e73df !important;
+  color: white !important;
+}
+#randomCountGroup {
+  background: #f8f9fc;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #e3e6f0;
+}
+</style>
+<script>
+$(function(){
+    var pollTimer = null;
+    var startTime = null;
+    var elapsedTimer = null;
+
+    // ── 所有预设关键词（随机选取用）────────────────────────
+    var ALL_KEYWORDS = [
+        // 技术开发
+        'Python','Java','前端开发','Go','C++','大数据','算法工程师','AI工程师',
+        'Android','iOS','Node.js','PHP','Ruby','Rust','Kotlin','Swift',
+        '数据分析','机器学习','深度学习','自然语言处理','计算机视觉',
+        '后端开发','全栈开发','DevOps','云计算','网络安全','嵌入式',
+        // 产品运营
+        '产品经理','运营','市场营销','新媒体','电商运营','内容运营',
+        '用户增长','品牌策划','SEO','SEM',
+        // 设计创意
+        'UI设计','平面设计','视频剪辑','动画设计','工业设计','室内设计',
+        // 职能管理
+        '人力资源','财务会计','项目管理','销售','客服','行政',
+        '供应链','采购','法务','审计',
+        // 其他热门
+        '教育培训','医疗健康','金融分析','咨询顾问'
+    ];
+
+    // ── 标签点击：切换添加/移除 ──────────────────────────
+    $(document).on('click', '.kw-tag', function() {
+        var kw = $(this).text().trim();
+        var input = $('#keywordInput');
+        var current = input.val().split(',').map(s => s.trim()).filter(Boolean);
+        var idx = current.indexOf(kw);
+        if (idx === -1) {
+            current.push(kw);
+            $(this).removeClass('badge-light').addClass('badge-primary text-white');
+        } else {
+            current.splice(idx, 1);
+            $(this).removeClass('badge-primary text-white').addClass('badge-light');
+        }
+        input.val(current.join(','));
+    });
+
+    // ── 随机模式开关 ──────────────────────────────────────
+    $('#useRandomMode').change(function() {
+        if($(this).is(':checked')) {
+            // 启用随机模式
+            $('#randomCountGroup').slideDown(200);
+            $('#keywordInput').prop('disabled', true).val('').attr('placeholder', '随机模式已启用，将自动选择关键词');
+            $('#keywordHint').text('（随机模式已启用）');
+            $('#randomKeywordBtn').prop('disabled', true);
+            $('.kw-tag').removeClass('badge-primary text-white').addClass('badge-light').css('opacity', '0.5');
+        } else {
+            // 禁用随机模式
+            $('#randomCountGroup').slideUp(200);
+            $('#keywordInput').prop('disabled', false).attr('placeholder', '如：Python,Java,前端,数据分析,Go');
+            $('#keywordHint').text('（多个用英文逗号分隔）');
+            $('#randomKeywordBtn').prop('disabled', false);
+            $('.kw-tag').css('opacity', '1');
+        }
+    });
+
+    // ── 随机数量按钮组 ────────────────────────────────────
+    $('.random-count-btn').click(function() {
+        $('.random-count-btn').removeClass('active btn-primary').addClass('btn-outline-secondary');
+        $(this).removeClass('btn-outline-secondary').addClass('active btn-primary');
+        $('#randomCountValue').val($(this).data('count'));
+    });
+
+    // 输入框变化时同步标签高亮
+    $('#keywordInput').on('input', function() {
+        var current = $(this).val().split(',').map(s => s.trim()).filter(Boolean);
+        $('.kw-tag').each(function() {
+            var kw = $(this).text().trim();
+            if (current.indexOf(kw) !== -1) {
+                $(this).removeClass('badge-light').addClass('badge-primary text-white');
+            } else {
+                $(this).removeClass('badge-primary text-white').addClass('badge-light');
+            }
+        });
+    });
+
+    // ── 随机选取：从全量关键词中随机选 4-6 个 ────────────
+    $('#randomKeywordBtn').click(function() {
+        var count = Math.floor(Math.random() * 3) + 4; // 4~6个
+        var shuffled = ALL_KEYWORDS.slice().sort(() => Math.random() - 0.5);
+        var selected = shuffled.slice(0, count);
+        $('#keywordInput').val(selected.join(','));
+        // 同步标签高亮
+        $('.kw-tag').each(function() {
+            var kw = $(this).text().trim();
+            if (selected.indexOf(kw) !== -1) {
+                $(this).removeClass('badge-light').addClass('badge-primary text-white');
+            } else {
+                $(this).removeClass('badge-primary text-white').addClass('badge-light');
+            }
+        });
+        // 动画提示
+        $(this).html('<i class="fas fa-check mr-1"></i>已选 ' + count + ' 个');
+        var btn = $(this);
+        setTimeout(function() {
+            btn.html('<i class="fas fa-random mr-1"></i>随机选取');
+        }, 1500);
+    });
+
+    // ── 检测当前爬取模式 ──────────────────────────────────
+    function detectMode() {
+        $.get('{% url "get_spider_mode" %}', function(res) {
+            // 51job 模式
+            if (res.browser_available) {
+                $('#modeIndicator')
+                    .removeClass('badge-light badge-secondary')
+                    .addClass('badge-success')
+                    .html('<i class="fas fa-check-circle mr-1"></i>jshook 浏览器模式');
+                $('#cookieHint').text('（jshook 模式下无需填写）');
+                $('#cookieInput').attr('placeholder', 'jshook 浏览器模式已就绪，无需填写 Cookie');
+            } else {
+                $('#modeIndicator')
+                    .removeClass('badge-light badge-success')
+                    .addClass('badge-secondary')
+                    .html('<i class="fas fa-info-circle mr-1"></i>requests 模式');
+                $('#cookieHint').text('（requests 模式，需填写 Cookie）');
+                $('#cookieInput').attr('placeholder', '请粘贴 51job Cookie（F12 → Network → 复制 Cookie 头）');
+            }
+            // BOSS 直聘状态
+            if (res.boss_available) {
+                $('#bossStatusHint').html(
+                    '<i class="fas fa-check-circle text-success mr-1"></i>' +
+                    '<span class="text-success">BOSS 直聘已就绪，可直接启动</span>' +
+                    ' <small class="text-muted">（登录后可爬取更多页）</small>'
+                );
+                $('#startBossBtn').removeClass('btn-outline-secondary').addClass('btn-outline-success');
+            } else {
+                $('#bossStatusHint').html(
+                    '<i class="fas fa-exclamation-circle text-warning mr-1"></i>' +
+                    '<span class="text-warning">BOSS 直聘未就绪 — </span>' +
+                    '<a href="#" id="openBossBtn" class="text-primary font-weight-bold ml-1">' +
+                    '<i class="fas fa-external-link-alt mr-1"></i>一键打开浏览器</a>'
+                );
+                $('#startBossBtn').removeClass('btn-outline-success').addClass('btn-outline-secondary');
+            }
+        }).fail(function() {
+            $('#modeIndicator').addClass('badge-secondary').text('模式未知');
+            $('#bossStatusHint').html('<span class="text-muted">状态检测失败</span>');
+        });
+    }
+    detectMode();
+
+    // ── 一键打开 BOSS 直聘浏览器 ─────────────────────────
+    var bossWaitTimer = null;
+
+    $(document).on('click', '#openBossBtn', function(e) {
+        e.preventDefault();
+        var $btn = $(this);
+        $btn.html('<i class="fas fa-spinner fa-spin mr-1"></i>正在启动...').css('pointer-events', 'none');
+
+        $.ajax({
+            url: '{% url "open_boss_browser" %}',
+            type: 'POST',
+            data: { csrfmiddlewaretoken: '{{ csrf_token }}' },
+            success: function(res) {
+                if (res.code === 0) {
+                    $('#bossStatusHint').html(
+                        '<i class="fas fa-spinner fa-spin text-info mr-1"></i>' +
+                        '<span class="text-info">' + res.msg + '，等待页面加载...</span>'
+                    );
+                    // 每 2 秒轮询，最多等 30 秒（15次）
+                    var attempts = 0;
+                    if (bossWaitTimer) clearInterval(bossWaitTimer);
+                    bossWaitTimer = setInterval(function() {
+                        attempts++;
+                        $.get('{% url "get_spider_mode" %}', function(r) {
+                            if (r.boss_available) {
+                                clearInterval(bossWaitTimer);
+                                $('#bossStatusHint').html(
+                                    '<i class="fas fa-check-circle text-success mr-1"></i>' +
+                                    '<span class="text-success">✅ BOSS 直聘已就绪，可以启动爬虫了！</span>'
+                                );
+                                $('#startBossBtn')
+                                    .removeClass('btn-outline-secondary')
+                                    .addClass('btn-outline-success');
+                            } else if (attempts >= 15) {
+                                clearInterval(bossWaitTimer);
+                                $('#bossStatusHint').html(
+                                    '<i class="fas fa-exclamation-circle text-warning mr-1"></i>' +
+                                    '<span class="text-warning">加载超时，请确认浏览器已打开 zhipin.com — </span>' +
+                                    '<a href="#" id="openBossBtn" class="text-primary ml-1">重试</a>'
+                                );
+                            }
+                        });
+                    }, 2000);
+                } else {
+                    $('#bossStatusHint').html(
+                        '<i class="fas fa-times-circle text-danger mr-1"></i>' +
+                        '<span class="text-danger">' + res.msg + '</span>'
+                    );
+                }
+            },
+            error: function() {
+                $('#bossStatusHint').html(
+                    '<i class="fas fa-times-circle text-danger mr-1"></i>' +
+                    '<span class="text-danger">请求失败，请重试</span>'
+                );
+            }
+        });
+    });
+
+    // ── 加载定时任务状态 ──────────────────────────────────
+    function loadScheduler() {
+        $.get('{% url "scheduler_status" %}', function(res) {
+            if (res.code !== 0) return;
+            var statusHtml = res.running
+                ? '<span class="text-success small"><i class="fas fa-circle mr-1" style="font-size:8px;"></i>调度器运行中</span>'
+                : '<span class="text-muted small"><i class="fas fa-circle mr-1" style="font-size:8px;"></i>调度器未启动</span>';
+            $('#schedulerStatus').html(statusHtml);
+            if (res.jobs && res.jobs.length) {
+                var html = '<table class="table table-sm mb-0" style="font-size:12px;">';
+                html += '<thead><tr><th class="text-muted pl-3">任务名称</th><th class="text-muted">下次执行</th></tr></thead><tbody>';
+                res.jobs.forEach(function(job) {
+                    var next = job.next_run ? job.next_run.substring(0, 16) : '—';
+                    html += '<tr><td class="pl-3">' + job.name + '</td><td class="text-muted">' + next + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                $('#schedulerJobs').html(html);
+            } else {
+                $('#schedulerJobs').html('<p class="text-muted small px-3 py-2 mb-0">暂无定时任务（服务器重启后自动注册）</p>');
+            }
+        });
+    }
+    loadScheduler();
+
+    // ── 工具函数 ──────────────────────────────────────────
+    function log(msg, cls) {
+        cls = cls || 'text-white-50';
+        var ts = new Date().toLocaleTimeString();
+        $('#spiderLog').append('<div class="' + cls + '">[' + ts + '] ' + msg + '</div>').scrollTop(1e9);
+    }
+
+    function setRunning(running, source) {
+        if (running) {
+            $('#spiderStatus').html('<span class="badge badge-danger">运行中</span>');
+            $('#statusDot').html('● 运行中').removeClass('text-success').addClass('text-danger');
+            $('#startBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>运行中...');
+            $('#startBossBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>运行中...');
+            $('#progressWrap').show();
+            $('#spiderLog').show();
+        } else {
+            $('#spiderStatus').html('<span class="badge badge-success">空闲</span>');
+            $('#statusDot').html('● 空闲').removeClass('text-danger').addClass('text-success');
+            $('#startBtn').prop('disabled', false).html('<i class="fas fa-play mr-1"></i>启动（51job）');
+            $('#startBossBtn').prop('disabled', false).html('<i class="fas fa-play mr-1"></i>启动（BOSS直聘）');
+            $('#progressBar').removeClass('progress-bar-animated').addClass('bg-success').css('width', '100%');
+            clearInterval(elapsedTimer);
+            loadSourceStats();
+        }
+    }
+
+    // ── 数据来源统计 ──────────────────────────────────────
+    function loadSourceStats() {
+        $.get('{% url "get_source_stats" %}', function(res) {
+            if (res.code !== 0) return;
+            var html = '';
+            res.data.forEach(function(item) {
+                var badge = item.source === 'BOSS直聘'
+                    ? 'badge-warning'
+                    : (item.source === '51job' ? 'badge-primary' : 'badge-secondary');
+                html += '<span class="badge ' + badge + ' mr-1">' + item.source + ' ' + item.count + '</span>';
+            });
+            $('#sourceStats').html(html || '<span class="text-muted small">暂无数据</span>');
+        }).fail(function() {
+            $('#sourceStats').html('<span class="text-muted small">-</span>');
+        });
+    }
+    loadSourceStats();
+
+    function updateElapsed() {
+        if (!startTime) return;
+        var sec = Math.floor((Date.now() - startTime) / 1000);
+        var m = Math.floor(sec / 60), s = sec % 60;
+        $('#elapsedTime').text('已用时 ' + (m > 0 ? m + 'm ' : '') + s + 's');
+    }
+
+    // ── 轮询状态 ──────────────────────────────────────────
+    function refreshStatus() {
+        $.get('{% url "get_spider_status" %}', function(res) {
+            if (res.code !== 0) return;
+            var d = res.data;
+            $('#totalCount').text(d.total_count);
+            $('#runCount').text(d.run_count);
+            $('#lastRunTime').text(d.last_run_time || '暂未运行');
+
+            if (d.status === 0 && pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                setRunning(false);
+                var newCount = d.last_new_count || 0;
+                if (newCount > 0) {
+                    log('✅ 爬虫完成，本次新增 ' + newCount + ' 条，累计 ' + d.total_count + ' 条', 'text-success');
+                } else {
+                    log('ℹ️ 爬虫完成，本次无新增（数据已是最新），累计 ' + d.total_count + ' 条', 'text-info');
+                }
+                $('#progressLabel').text('完成');
+                detectMode(); // 完成后重新检测模式
+            }
+        });
+    }
+
+    // ── 启动爬虫 ──────────────────────────────────────────
+    $('#startBtn').click(function() {
+        var useRandom  = $('#useRandomMode').is(':checked');
+        var keyword    = $('input[name="keyword"]').val().trim();
+        var pages      = $('select[name="pages"]').val();
+        var maxWorkers = $('select[name="max_workers"]').val();
+        var cookie     = $('textarea[name="cookie"]').val().trim();
+
+        // 随机模式验证
+        if (useRandom) {
+            var randomCount = $('#randomCountValue').val();
+            var msg = '🎲 随机爬取模式\n' +
+                      '数量：' + randomCount + ' 个随机关键词\n' +
+                      '页数：' + pages + ' 页/词\n' +
+                      '并行：' + maxWorkers + ' 个\n\n' +
+                      '系统将从80+关键词池中随机选择，确定启动？';
+            if (!confirm(msg)) return;
+
+            $('#spiderLog').empty().show();
+            log('🎲 启动随机爬取模式，将选择 ' + randomCount + ' 个关键词');
+            $('#progressLabel').text('正在随机选择关键词并爬取...');
+
+            $.ajax({
+                url: '{% url "start_spider" %}',
+                type: 'POST',
+                data: {
+                    use_random: true,
+                    random_count: randomCount,
+                    pages: pages,
+                    max_workers: maxWorkers,
+                    cookie: cookie,
+                    csrfmiddlewaretoken: '{{ csrf_token }}'
+                },
+                success: function(res) {
+                    if (res.code === 0) {
+                        log('✔ ' + res.msg, 'text-info');
+                        if (res.keywords && res.keywords.length) {
+                            log('📋 随机选中的关键词: ' + res.keywords.join(', '), 'text-success');
+                        }
+                        if (res.mode) {
+                            log('📡 模式: ' + res.mode, 'text-white-50');
+                        }
+                        setRunning(true, '51job');
+                        startTime = Date.now();
+                        elapsedTimer = setInterval(updateElapsed, 1000);
+                        pollTimer = setInterval(refreshStatus, 4000);
+                    } else {
+                        log('✖ ' + res.msg, 'text-danger');
+                        alert(res.msg);
+                    }
+                },
+                error: function() { log('✖ 请求失败', 'text-danger'); }
+            });
+            return;
+        }
+
+        // 指定关键词模式验证
+        if (!keyword) { alert('请输入搜索关键词'); return; }
+
+        var kwList = keyword.split(',').map(s => s.trim()).filter(Boolean);
+        var msg = '关键词：' + kwList.join('、') + '\n页数：' + pages + ' 页/词\n并行：' + maxWorkers + ' 个\n\n确定启动？';
+        if (!confirm(msg)) return;
+
+        $('#spiderLog').empty().show();
+        log('🚀 启动，关键词: ' + kwList.join(', ') + '，每词 ' + pages + ' 页');
+        $('#progressLabel').text('正在爬取 ' + kwList.length + ' 个关键词...');
+
+        $.ajax({
+            url: '{% url "start_spider" %}',
+            type: 'POST',
+            data: {
+                keyword: keyword,
+                pages: pages,
+                max_workers: maxWorkers,
+                cookie: cookie,
+                csrfmiddlewaretoken: '{{ csrf_token }}'
+            },
+            success: function(res) {
+                if (res.code === 0) {
+                    log('✔ ' + res.msg, 'text-info');
+                    if (res.mode) {
+                        log('📡 模式: ' + res.mode, 'text-white-50');
+                    }
+                    setRunning(true, '51job');
+                    startTime = Date.now();
+                    elapsedTimer = setInterval(updateElapsed, 1000);
+                    pollTimer = setInterval(refreshStatus, 4000);
+                } else {
+                    log('✖ ' + res.msg, 'text-danger');
+                    alert(res.msg);
+                }
+            },
+            error: function() { log('✖ 请求失败', 'text-danger'); }
+        });
+    });
+
+    // ── 启动 BOSS 直聘爬虫 ────────────────────────────────
+    $('#startBossBtn').click(function() {
+        var useRandom = $('#useRandomMode').is(':checked');
+        var keyword   = $('input[name="keyword"]').val().trim();
+        var pages     = $('select[name="pages"]').val();
+
+        // 随机模式
+        if (useRandom) {
+            var randomCount = $('#randomCountValue').val();
+            if (!confirm('🎲 启动 BOSS 直聘随机爬虫\n数量：' + randomCount + ' 个随机关键词\n页数：' + pages + '\n\n请确保 jshook 浏览器已打开 zhipin.com 页面')) return;
+
+            $('#spiderLog').empty().show();
+            log('🎲 启动 BOSS 直聘随机爬虫，将选择 ' + randomCount + ' 个关键词');
+            $('#progressLabel').text('正在爬取 BOSS 直聘...');
+
+            $.ajax({
+                url: '{% url "start_boss_spider" %}',
+                type: 'POST',
+                data: { 
+                    use_random: true,
+                    random_count: randomCount,
+                    pages: pages, 
+                    csrfmiddlewaretoken: '{{ csrf_token }}' 
+                },
+                success: function(res) {
+                    if (res.code === 0) {
+                        log('✔ ' + res.msg + ' | 模式: ' + (res.mode || ''), 'text-info');
+                        if (res.keywords && res.keywords.length) {
+                            log('📋 随机选中的关键词: ' + res.keywords.join(', '), 'text-success');
+                        }
+                        setRunning(true, 'boss');
+                        startTime = Date.now();
+                        elapsedTimer = setInterval(updateElapsed, 1000);
+                        pollTimer = setInterval(refreshStatus, 4000);
+                    } else {
+                        $('#spiderLog').show();
+                        log('⚠️ ' + res.msg.replace(/\n/g, ' | '), 'text-warning');
+                        $('#bossStatusHint').html(
+                            '<i class="fas fa-exclamation-circle text-warning mr-1"></i>' +
+                            '<span class="text-warning">请先在 jshook 浏览器中打开 <strong>zhipin.com</strong>，然后点刷新状态</span>'
+                        );
+                    }
+                },
+                error: function() { log('✖ 请求失败', 'text-danger'); }
+            });
+            return;
+        }
+
+        // 指定关键词模式
+        if (!keyword) { alert('请输入搜索关键词'); return; }
+        var kwList = keyword.split(',').map(s => s.trim()).filter(Boolean);
+        if (!confirm('启动 BOSS 直聘爬虫\n关键词：' + kwList.join('、') + '\n页数：' + pages + '\n\n请确保 jshook 浏览器已打开 zhipin.com 页面')) return;
+
+        $('#spiderLog').empty().show();
+        log('🚀 启动 BOSS 直聘爬虫，关键词: ' + kwList.join(', '));
+        $('#progressLabel').text('正在爬取 BOSS 直聘...');
+
+        $.ajax({
+            url: '{% url "start_boss_spider" %}',
+            type: 'POST',
+            data: { keyword: keyword, pages: pages, csrfmiddlewaretoken: '{{ csrf_token }}' },
+            success: function(res) {
+                if (res.code === 0) {
+                    log('✔ ' + res.msg + ' | 模式: ' + (res.mode || ''), 'text-info');
+                    setRunning(true, 'boss');
+                    startTime = Date.now();
+                    elapsedTimer = setInterval(updateElapsed, 1000);
+                    pollTimer = setInterval(refreshStatus, 4000);
+                } else {
+                    // 友好提示，不用 alert
+                    $('#spiderLog').show();
+                    log('⚠️ ' + res.msg.replace(/\n/g, ' | '), 'text-warning');
+                    $('#bossStatusHint').html(
+                        '<i class="fas fa-exclamation-circle text-warning mr-1"></i>' +
+                        '<span class="text-warning">请先在 jshook 浏览器中打开 <strong>zhipin.com</strong>，然后点刷新状态</span>'
+                    );
+                }
+            },
+            error: function() { log('✖ 请求失败', 'text-danger'); }
+        });
+    });
+
+    // ── 手动刷新 ──────────────────────────────────────────
+    $('#refreshBtn').click(function() {
+        refreshStatus();
+        detectMode();
+        $(this).find('i').addClass('fa-spin');
+        setTimeout(() => { $('#refreshBtn i').removeClass('fa-spin'); }, 800);
+    });
+
+    // 页面加载时如果爬虫正在运行，自动监控
+    {% if spider_info.status == 1 %}
+    setRunning(true, 'auto');
+    startTime = Date.now();
+    elapsedTimer = setInterval(updateElapsed, 1000);
+    log('⚡ 检测到爬虫正在运行，自动监控中...', 'text-warning');
+    pollTimer = setInterval(refreshStatus, 4000);
+    {% endif %}
+});
+</script>
+{% endblock %}
+
+<!-- Cookie 帮助弹窗 -->
+<div class="modal fade" id="cookieHelpModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">如何获取 51job Cookie</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-success">
+                    <i class="fas fa-lightbulb mr-1"></i>
+                    <strong>推荐：</strong>使用 jshook 浏览器模式，完全不需要 Cookie。
+                    在 Kiro 中通过 jshook 打开 51job 搜索页后，爬虫会自动使用浏览器模式。
+                </div>
+                <p class="text-muted mb-2">如需手动获取 Cookie（requests 模式）：</p>
+                <ol style="line-height:2.2;">
+                    <li>用 Chrome 打开 <a href="https://we.51job.com" target="_blank">we.51job.com</a></li>
+                    <li>按 <kbd>F12</kbd> → <strong>Network</strong> 标签</li>
+                    <li>搜索框搜索任意关键词，触发一次请求</li>
+                    <li>点击任意请求 → <strong>Request Headers</strong> → 复制 <strong>Cookie</strong> 字段</li>
+                </ol>
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Cookie 有效期约 1-7 天，过期后需重新获取。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

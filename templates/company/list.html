@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% block title %}已验证企业列表 - 招聘数据分析平台{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">
+        <i class="fas fa-list text-primary mr-2"></i>已验证企业列表
+    </h1>
+    <a href="{% url 'company_verify' %}" class="btn btn-sm btn-primary">
+        <i class="fas fa-plus mr-1"></i>验证新企业
+    </a>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card shadow mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="form-inline flex-wrap">
+            <div class="input-group mr-3 mb-2">
+                <input type="text" class="form-control" name="keyword"
+                       value="{{ keyword }}" placeholder="搜索公司名称/信用代码/法人">
+                <div class="input-group-append">
+                    <button class="btn btn-primary" type="submit">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+            <select class="form-control mr-3 mb-2" name="status">
+                <option value="">全部状态</option>
+                <option value="verified" {% if status == 'verified' %}selected{% endif %}>已验证</option>
+                <option value="not_found" {% if status == 'not_found' %}selected{% endif %}>未找到</option>
+                <option value="error" {% if status == 'error' %}selected{% endif %}>查询失败</option>
+            </select>
+            <select class="form-control mr-3 mb-2" name="risk_level">
+                <option value="">全部风险</option>
+                <option value="低" {% if risk_level == '低' %}selected{% endif %}>低风险</option>
+                <option value="中" {% if risk_level == '中' %}selected{% endif %}>中风险</option>
+                <option value="高" {% if risk_level == '高' %}selected{% endif %}>高风险</option>
+            </select>
+            {% if keyword or status or risk_level %}
+            <a href="{% url 'company_list' %}" class="btn btn-outline-secondary mb-2">
+                <i class="fas fa-times mr-1"></i>清除筛选
+            </a>
+            {% endif %}
+        </form>
+        <small class="text-muted">共 {{ total }} 条记录</small>
+    </div>
+</div>
+
+<!-- 企业列表 -->
+<div class="card shadow mb-4">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th>公司名称</th>
+                        <th>统一信用代码</th>
+                        <th>法定代表人</th>
+                        <th>注册资本</th>
+                        <th>经营状态</th>
+                        <th>风险等级</th>
+                        <th>数据来源</th>
+                        <th>验证时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obj in page_obj %}
+                    <tr>
+                        <td>
+                            <span class="font-weight-bold">{{ obj.company_name }}</span>
+                        </td>
+                        <td>
+                            {% if obj.unified_code %}
+                            <code class="small">{{ obj.unified_code }}</code>
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td>{{ obj.legal_person|default:"-" }}</td>
+                        <td>{{ obj.registered_capital|default:"-" }}</td>
+                        <td>
+                            {% if obj.status == 'verified' %}
+                                {% if obj.is_normal %}
+                                <span class="badge badge-success">{{ obj.business_status|default:"正常" }}</span>
+                                {% else %}
+                                <span class="badge badge-danger">{{ obj.business_status|default:"异常" }}</span>
+                                {% endif %}
+                            {% elif obj.status == 'not_found' %}
+                            <span class="badge badge-warning">未找到</span>
+                            {% else %}
+                            <span class="badge badge-secondary">查询失败</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if obj.risk_level == '低' %}
+                            <span class="badge badge-success">低风险</span>
+                            {% elif obj.risk_level == '中' %}
+                            <span class="badge badge-warning">中风险</span>
+                            {% elif obj.risk_level == '高' %}
+                            <span class="badge badge-danger">高风险</span>
+                            {% else %}
+                            <span class="badge badge-secondary">未知</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if obj.source == 'aiqicha' %}爱企查
+                                {% elif obj.source == 'tianyancha' %}天眼查
+                                {% elif obj.source == 'qichacha' %}企查查
+                                {% elif obj.source == 'gsxt' %}国家信用系统
+                                {% else %}{{ obj.source }}{% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {{ obj.verified_at|date:"Y-m-d H:i" }}
+                            </small>
+                        </td>
+                        <td>
+                            <button class="btn btn-xs btn-outline-primary"
+                                    onclick="reVerify('{{ obj.company_name|escapejs }}')">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-5">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                            暂无验证记录，<a href="{% url 'company_verify' %}">去验证企业</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 分页 -->
+{% if page_obj.has_other_pages %}
+<nav>
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.previous_page_number }}&keyword={{ keyword }}&status={{ status }}&risk_level={{ risk_level }}">上一页</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+            <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page_obj.next_page_number }}&keyword={{ keyword }}&status={{ status }}&risk_level={{ risk_level }}">下一页</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function reVerify(companyName) {
+    if (!confirm('重新查询「' + companyName + '」的企业信息？')) return;
+
+    $.ajax({
+        url: '/company/api/verify/',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ company_name: companyName, force_refresh: true }),
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        success: function(resp) {
+            if (resp.code === 0) {
+                alert('重新验证成功，刷新页面查看最新结果');
+                location.reload();
+            } else {
+                alert(resp.msg || '验证失败');
+            }
+        },
+        error: function() { alert('网络请求失败'); }
+    });
+}
+
+function getCookie(name) {
+    let v = null;
+    document.cookie.split(';').forEach(c => {
+        const [k, val] = c.trim().split('=');
+        if (k === name) v = decodeURIComponent(val);
+    });
+    return v;
+}
+</script>
+{% endblock %}

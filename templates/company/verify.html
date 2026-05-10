@@ -1,0 +1,474 @@
+{% extends 'base.html' %}
+{% block title %}企业信息验证 - 招聘数据分析平台{% endblock %}
+
+{% block extra_css %}
+<style>
+.source-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.info-card { border-left: 3px solid #4e73df; }
+.risk-low  { border-left-color: #1cc88a; }
+.risk-mid  { border-left-color: #f6c23e; }
+.risk-high { border-left-color: #e74a3b; }
+.field-label { font-size: 11px; color: #858796; margin-bottom: 2px; }
+.field-value { font-size: 14px; font-weight: 600; color: #2d3748; }
+.api-config-tip { background: #f8f9fc; border: 1px dashed #d1d3e2; border-radius: 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">
+        <i class="fas fa-building text-primary mr-2"></i>企业信息验证
+    </h1>
+    <a href="{% url 'company_list' %}" class="btn btn-sm btn-outline-primary shadow-sm">
+        <i class="fas fa-list mr-1"></i>已验证企业列表
+    </a>
+</div>
+
+<div class="row">
+    <!-- 左侧：查询面板 -->
+    <div class="col-xl-4 col-lg-5 mb-4">
+
+        <!-- 单个查询 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-search mr-2"></i>查询企业
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="small font-weight-bold">公司名称</label>
+                    <input type="text" class="form-control" id="companyInput"
+                           placeholder="如：腾讯科技（深圳）有限公司"
+                           maxlength="100" autocomplete="off">
+                    <small class="text-muted">建议输入完整工商注册名称</small>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="forceRefresh">
+                    <label class="form-check-label small" for="forceRefresh">
+                        强制刷新（忽略24h缓存）
+                    </label>
+                </div>
+                <button class="btn btn-primary btn-block" id="verifyBtn" onclick="verifyCompany()">
+                    <i class="fas fa-shield-alt mr-1"></i>验证企业信息
+                </button>
+            </div>
+        </div>
+
+        <!-- 批量查询 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-layer-group mr-2"></i>批量查询
+                    <small class="text-muted font-weight-normal ml-1">最多20个</small>
+                </h6>
+            </div>
+            <div class="card-body">
+                <textarea class="form-control mb-2" id="batchInput" rows="6"
+                    placeholder="每行一个公司名称：&#10;腾讯科技（深圳）有限公司&#10;阿里巴巴（中国）有限公司&#10;字节跳动有限公司"></textarea>
+                <button class="btn btn-outline-primary btn-block btn-sm" id="batchBtn" onclick="batchVerify()">
+                    <i class="fas fa-play mr-1"></i>开始批量查询
+                </button>
+                <div id="batchProgress" class="mt-2 d-none">
+                    <div class="progress" style="height:6px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             id="batchProgressBar" style="width:0%"></div>
+                    </div>
+                    <small class="text-muted" id="batchProgressText">0 / 0</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- API 配置说明 -->
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-info">
+                    <i class="fas fa-key mr-2"></i>数据源配置
+                </h6>
+            </div>
+            <div class="card-body p-3">
+                <div id="apiStatus">
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-success mr-2">免费</span>
+                        <span class="small">爱企查（默认，无需配置）</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-secondary mr-2" id="qccBadge">未配置</span>
+                        <span class="small">企查查 Open API</span>
+                    </div>
+                    <div class="d-flex align-items-center mb-2">
+                        <span class="badge badge-secondary mr-2" id="tycBadge">未配置</span>
+                        <span class="small">天眼查 Open API</span>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <p class="small text-muted mb-1">在 <code>.env</code> 中配置付费 API 可获得更准确的数据：</p>
+                <pre class="small bg-light p-2 rounded mb-0" style="font-size:11px;">QICHACHA_KEY=xxx
+QICHACHA_SECRET=xxx
+TIANYANCHA_TOKEN=xxx</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧：结果展示 -->
+    <div class="col-xl-8 col-lg-7 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-clipboard-check mr-2"></i>验证结果
+                </h6>
+                <div id="resultMeta" class="d-none">
+                    <span id="sourceBadge" class="badge source-badge mr-1"></span>
+                    <span id="cacheBadge" class="badge badge-light source-badge"></span>
+                </div>
+            </div>
+            <div class="card-body" id="resultArea">
+                <!-- 空状态 -->
+                <div id="emptyState" class="text-center py-5">
+                    <i class="fas fa-building fa-4x mb-3 d-block text-gray-300"></i>
+                    <p class="text-muted">输入公司名称后点击验证</p>
+                    <p class="small text-muted">支持查询工商注册信息、法定代表人、注册资本、经营状态及风险信息</p>
+                </div>
+                <!-- 加载中 -->
+                <div id="loadingState" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width:3rem;height:3rem;"></div>
+                    <p class="text-muted">正在查询企业信息，请稍候...</p>
+                    <small class="text-muted">首次查询需要从外部数据源获取，约需 3-10 秒</small>
+                </div>
+                <!-- 结果内容 -->
+                <div id="resultContent" class="d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量结果表格 -->
+<div class="card shadow mb-4 d-none" id="batchResultCard">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">
+            <i class="fas fa-table mr-2"></i>批量查询结果
+        </h6>
+        <button class="btn btn-sm btn-outline-success" onclick="exportBatchCSV()">
+            <i class="fas fa-file-csv mr-1"></i>导出 CSV
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" id="batchTable">
+                <thead class="thead-light">
+                    <tr>
+                        <th>公司名称</th>
+                        <th>统一信用代码</th>
+                        <th>法定代表人</th>
+                        <th>注册资本</th>
+                        <th>成立日期</th>
+                        <th>经营状态</th>
+                        <th>风险等级</th>
+                        <th>数据来源</th>
+                    </tr>
+                </thead>
+                <tbody id="batchTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var batchData = {};  // 保存批量结果，用于导出
+
+// ── 检查 API 配置状态 ─────────────────────────────────────────
+$.get('/company/api/config-status/', function(resp) {
+    if (resp.qichacha) $('#qccBadge').removeClass('badge-secondary').addClass('badge-success').text('已配置');
+    if (resp.tianyancha) $('#tycBadge').removeClass('badge-secondary').addClass('badge-success').text('已配置');
+});
+
+// ── 单个查询 ──────────────────────────────────────────────────
+function verifyCompany() {
+    var name = $('#companyInput').val().trim();
+    if (!name) { showToast('请输入公司名称', 'warning'); return; }
+
+    showLoading();
+    $.ajax({
+        url: '/company/api/verify/',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            company_name: name,
+            force_refresh: $('#forceRefresh').is(':checked')
+        }),
+        headers: { 'X-CSRFToken': getCsrf() },
+        success: function(resp) { hideLoading(); renderResult(resp); },
+        error: function() { hideLoading(); showError('网络请求失败，请稍后重试'); }
+    });
+}
+
+// ── 批量查询 ──────────────────────────────────────────────────
+function batchVerify() {
+    var lines = $('#batchInput').val().trim().split('\n')
+        .map(s => s.trim()).filter(s => s.length > 0).slice(0, 20);
+    if (!lines.length) { showToast('请输入公司名称列表', 'warning'); return; }
+
+    batchData = {};
+    $('#batchTableBody').empty();
+    $('#batchResultCard').addClass('d-none');
+    $('#batchProgress').removeClass('d-none');
+    $('#batchBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>查询中...');
+
+    var done = 0;
+    var total = lines.length;
+
+    function updateProgress() {
+        var pct = Math.round(done / total * 100);
+        $('#batchProgressBar').css('width', pct + '%');
+        $('#batchProgressText').text(done + ' / ' + total + ' 已完成');
+    }
+
+    // 逐个查询（避免并发过多被限流）
+    function queryNext(idx) {
+        if (idx >= lines.length) {
+            $('#batchBtn').prop('disabled', false).html('<i class="fas fa-play mr-1"></i>开始批量查询');
+            $('#batchProgress').addClass('d-none');
+            $('#batchResultCard').removeClass('d-none');
+            return;
+        }
+        var name = lines[idx];
+        $.ajax({
+            url: '/company/api/verify/',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ company_name: name }),
+            headers: { 'X-CSRFToken': getCsrf() },
+            success: function(resp) {
+                done++;
+                updateProgress();
+                appendBatchRow(name, resp.data || {});
+                batchData[name] = resp.data || {};
+                setTimeout(function() { queryNext(idx + 1); }, 800); // 间隔 0.8s 避免限流
+            },
+            error: function() {
+                done++;
+                updateProgress();
+                appendBatchRow(name, { status: 'error' });
+                setTimeout(function() { queryNext(idx + 1); }, 800);
+            }
+        });
+    }
+    updateProgress();
+    queryNext(0);
+}
+
+function appendBatchRow(name, result) {
+    var info = result.data || {};
+    var status = result.status;
+    var riskColors = { '低': 'success', '中': 'warning', '高': 'danger', '未知': 'secondary' };
+    var riskColor = riskColors[info.risk_level] || 'secondary';
+
+    var statusHtml;
+    if (status === 'verified') {
+        var isNormal = info.is_normal;
+        statusHtml = '<span class="badge badge-' + (isNormal ? 'success' : 'danger') + '">'
+            + esc(info.business_status || (isNormal ? '正常' : '异常')) + '</span>';
+    } else if (status === 'not_found') {
+        statusHtml = '<span class="badge badge-warning">未找到</span>';
+    } else {
+        statusHtml = '<span class="badge badge-secondary">查询失败</span>';
+    }
+
+    $('#batchTableBody').append('<tr>'
+        + '<td class="font-weight-bold">' + esc(name) + '</td>'
+        + '<td><code class="small">' + esc(info.unified_code || '-') + '</code></td>'
+        + '<td>' + esc(info.legal_person || '-') + '</td>'
+        + '<td>' + esc(info.registered_capital || '-') + '</td>'
+        + '<td>' + esc(info.establishment_date || '-') + '</td>'
+        + '<td>' + statusHtml + '</td>'
+        + '<td><span class="badge badge-' + riskColor + '">' + esc(info.risk_level || '未知') + '</span></td>'
+        + '<td><small class="text-muted">' + sourceLabel(result.source) + '</small></td>'
+        + '</tr>');
+}
+
+// ── 导出批量结果为 CSV ────────────────────────────────────────
+function exportBatchCSV() {
+    var rows = [['公司名称','统一信用代码','法定代表人','注册资本','成立日期','经营状态','风险等级','数据来源']];
+    Object.entries(batchData).forEach(function([name, result]) {
+        var info = result.data || {};
+        rows.push([
+            name,
+            info.unified_code || '',
+            info.legal_person || '',
+            info.registered_capital || '',
+            info.establishment_date || '',
+            info.business_status || (result.status === 'not_found' ? '未找到' : '查询失败'),
+            info.risk_level || '未知',
+            sourceLabel(result.source),
+        ]);
+    });
+    var csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+    var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = '企业验证结果.csv'; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ── 渲染单个结果 ──────────────────────────────────────────────
+function renderResult(resp) {
+    if (resp.code !== 0 && !resp.data) { showError(resp.msg); return; }
+
+    var d = resp.data || {};
+    var info = d.data || {};
+    var status = d.status;
+
+    // 来源徽章
+    var srcColors = { aiqicha: 'info', tianyancha: 'primary', qichacha: 'success', gsxt: 'secondary' };
+    var srcColor = srcColors[d.source] || 'secondary';
+    $('#sourceBadge').attr('class', 'badge badge-' + srcColor + ' source-badge mr-1')
+        .text(sourceLabel(d.source));
+    $('#cacheBadge').text(d.cached ? ('缓存 ' + (d.verified_at || '')) : '实时数据');
+    $('#resultMeta').removeClass('d-none');
+
+    var html = '';
+
+    if (status === 'verified' && info.company_name) {
+        var isNormal = info.is_normal;
+        var riskColors = { '低': 'success', '中': 'warning', '高': 'danger', '未知': 'secondary' };
+        var riskColor = riskColors[info.risk_level] || 'secondary';
+        var riskCardClass = { '低': 'risk-low', '中': 'risk-mid', '高': 'risk-high', '未知': '' }[info.risk_level] || '';
+
+        html += '<div class="d-flex align-items-start justify-content-between mb-3 flex-wrap">'
+            + '<h5 class="font-weight-bold text-dark mb-1 mr-3">' + esc(info.company_name) + '</h5>'
+            + '<div class="d-flex align-items-center">'
+            + '<span class="badge badge-pill badge-' + (isNormal ? 'success' : 'danger') + ' px-3 py-2 mr-2">'
+            + '<i class="fas fa-' + (isNormal ? 'check' : 'times') + '-circle mr-1"></i>'
+            + esc(info.business_status || (isNormal ? '正常' : '异常')) + '</span>'
+            + '<span class="badge badge-pill badge-' + riskColor + ' px-3 py-2">'
+            + '<i class="fas fa-shield-alt mr-1"></i>' + (info.risk_level || '未知') + '风险</span>'
+            + '</div></div>';
+
+        // 基本信息网格
+        html += '<div class="row mb-3">';
+        var fields = [
+            ['fas fa-id-card', '统一社会信用代码', info.unified_code, 'col-sm-6'],
+            ['fas fa-user-tie', '法定代表人', info.legal_person, 'col-sm-6'],
+            ['fas fa-coins', '注册资本', info.registered_capital, 'col-sm-6'],
+            ['fas fa-calendar-alt', '成立日期', info.establishment_date, 'col-sm-6'],
+            ['fas fa-industry', '企业类型', info.company_type, 'col-sm-6'],
+            ['fas fa-tags', '所属行业', info.industry, 'col-sm-6'],
+            ['fas fa-users', '人员规模', info.staff_size, 'col-sm-6'],
+            ['fas fa-phone', '联系电话', info.phone, 'col-sm-6'],
+        ];
+        fields.forEach(function(f) {
+            if (f[2]) {
+                html += '<div class="' + f[3] + ' mb-3">'
+                    + '<div class="field-label"><i class="' + f[0] + ' mr-1"></i>' + f[1] + '</div>'
+                    + '<div class="field-value">' + esc(f[2]) + '</div>'
+                    + '</div>';
+            }
+        });
+        html += '</div>';
+
+        if (info.registered_address) {
+            html += '<div class="mb-3">'
+                + '<div class="field-label"><i class="fas fa-map-marker-alt mr-1"></i>注册地址</div>'
+                + '<div class="small text-dark">' + esc(info.registered_address) + '</div>'
+                + '</div>';
+        }
+
+        if (info.website) {
+            html += '<div class="mb-3">'
+                + '<div class="field-label"><i class="fas fa-globe mr-1"></i>官网</div>'
+                + '<a href="' + esc(info.website) + '" target="_blank" class="small">' + esc(info.website) + '</a>'
+                + '</div>';
+        }
+
+        // 风险信息卡片
+        html += '<div class="card info-card ' + riskCardClass + ' mt-2">'
+            + '<div class="card-body py-2 px-3">';
+        if (info.risk_count || info.lawsuit_count || info.dishonest_count) {
+            html += '<div class="d-flex align-items-center mb-1">'
+                + '<i class="fas fa-exclamation-triangle text-warning mr-2"></i>'
+                + '<strong class="small">风险提示</strong></div>'
+                + '<div class="row">';
+            if (info.risk_count) html += '<div class="col-4 text-center"><div class="h5 mb-0 text-danger">' + info.risk_count + '</div><small class="text-muted">风险信息</small></div>';
+            if (info.lawsuit_count) html += '<div class="col-4 text-center"><div class="h5 mb-0 text-warning">' + info.lawsuit_count + '</div><small class="text-muted">司法案件</small></div>';
+            if (info.dishonest_count) html += '<div class="col-4 text-center"><div class="h5 mb-0 text-danger">' + info.dishonest_count + '</div><small class="text-muted">失信记录</small></div>';
+            html += '</div>';
+        } else {
+            html += '<i class="fas fa-check-circle text-success mr-2"></i>'
+                + '<span class="small text-success">暂无风险记录，企业状态良好</span>';
+        }
+        html += '</div></div>';
+
+        // 外部链接
+        html += '<div class="mt-3 text-right">'
+            + '<a href="https://aiqicha.baidu.com/s?q=' + encodeURIComponent(info.company_name) + '" target="_blank" class="btn btn-xs btn-outline-info mr-2"><i class="fas fa-external-link-alt mr-1"></i>爱企查</a>'
+            + '<a href="https://www.tianyancha.com/search#keyword=' + encodeURIComponent(info.company_name) + '" target="_blank" class="btn btn-xs btn-outline-primary"><i class="fas fa-external-link-alt mr-1"></i>天眼查</a>'
+            + '</div>';
+
+    } else if (status === 'not_found') {
+        var qname = $('#companyInput').val().trim();
+        html = '<div class="text-center py-4">'
+            + '<i class="fas fa-search fa-3x text-warning mb-3 d-block"></i>'
+            + '<h6>未找到该企业信息</h6>'
+            + '<p class="text-muted small">请检查公司名称是否为完整的工商注册名称</p>'
+            + '<div class="mt-3">'
+            + '<a href="https://aiqicha.baidu.com/s?q=' + encodeURIComponent(qname) + '" target="_blank" class="btn btn-sm btn-outline-info mr-2"><i class="fas fa-external-link-alt mr-1"></i>在爱企查搜索</a>'
+            + '<a href="https://www.gsxt.gov.cn/corp-query-search-1.html" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-external-link-alt mr-1"></i>国家信用系统</a>'
+            + '</div></div>';
+    } else {
+        html = '<div class="text-center py-4">'
+            + '<i class="fas fa-exclamation-circle fa-3x text-danger mb-3 d-block"></i>'
+            + '<h6>查询失败</h6>'
+            + '<p class="text-muted small">' + esc(resp.msg || d.message || '请稍后重试') + '</p>'
+            + '<p class="text-muted small">可尝试：1) 检查网络连接 2) 配置付费 API Key 3) 直接访问爱企查官网</p>'
+            + '</div>';
+    }
+
+    $('#emptyState').addClass('d-none');
+    $('#resultContent').removeClass('d-none').html(html);
+}
+
+// ── 工具函数 ──────────────────────────────────────────────────
+function showLoading() {
+    $('#emptyState, #resultContent').addClass('d-none');
+    $('#loadingState').removeClass('d-none');
+    $('#resultMeta').addClass('d-none');
+    $('#verifyBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>查询中...');
+}
+function hideLoading() {
+    $('#loadingState').addClass('d-none');
+    $('#verifyBtn').prop('disabled', false).html('<i class="fas fa-shield-alt mr-1"></i>验证企业信息');
+}
+function showError(msg) {
+    $('#emptyState, #loadingState').addClass('d-none');
+    $('#resultContent').removeClass('d-none').html(
+        '<div class="alert alert-danger"><i class="fas fa-times-circle mr-2"></i>' + esc(msg) + '</div>'
+    );
+}
+function sourceLabel(src) {
+    return { aiqicha: '爱企查', tianyancha: '天眼查', qichacha: '企查查', gsxt: '国家信用系统', manual: '手动录入' }[src] || src || '-';
+}
+function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function getCsrf() {
+    var v = null;
+    document.cookie.split(';').forEach(function(c) {
+        var p = c.trim().split('=');
+        if (p[0] === 'csrftoken') v = decodeURIComponent(p[1]);
+    });
+    return v;
+}
+function showToast(msg, type) {
+    // 简单 alert 替代
+    alert(msg);
+}
+
+// 回车触发查询
+$('#companyInput').on('keypress', function(e) {
+    if (e.which === 13) verifyCompany();
+});
+</script>
+{% endblock %}

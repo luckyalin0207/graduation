@@ -1,0 +1,381 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ job_type }}岗位分析 - 招聘数据可视化分析平台{% endblock %}
+
+{% block extra_css %}
+<style>
+.filter-card { background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); padding:20px; margin-bottom:24px; }
+.keyword-tag { display:inline-block; background:#f0f4ff; color:#0071e3; border-radius:20px; padding:5px 14px; font-size:13px; font-weight:500; margin:4px; cursor:pointer; border:2px solid transparent; transition:all 0.15s; }
+.keyword-tag:hover, .keyword-tag.active { background:#0071e3; color:#fff; border-color:#0071e3; }
+.salary-card { border-radius:12px; padding:18px 20px; color:#fff; }
+.salary-card.blue  { background: linear-gradient(135deg,#0071e3,#5ac8fa); }
+.salary-card.green { background: linear-gradient(135deg,#34c759,#30d158); }
+.salary-card.orange{ background: linear-gradient(135deg,#ff9f0a,#ffcc00); }
+.salary-card.purple{ background: linear-gradient(135deg,#af52de,#bf5af2); }
+.salary-card .label { font-size:11px; opacity:0.85; text-transform:uppercase; letter-spacing:0.05em; }
+.salary-card .value { font-size:1.8rem; font-weight:700; line-height:1.2; }
+.salary-card .sub   { font-size:12px; opacity:0.75; margin-top:2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- 标题 -->
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">岗位分析</h1>
+</div>
+
+<!-- 筛选器 -->
+<div class="filter-card">
+    <div class="mb-2" style="font-size:13px;font-weight:600;color:rgba(0,0,0,0.5);text-transform:uppercase;letter-spacing:0.05em;">选择职位类型（可多选，点击切换）</div>
+    <div id="keywordTags">
+        {% for kw in all_keywords %}
+        <span class="keyword-tag {% if kw.key_word in keywords %}active{% endif %}"
+              data-kw="{{ kw.key_word }}">
+            {{ kw.key_word }} <span style="opacity:0.6;font-size:11px;">{{ kw.count }}</span>
+        </span>
+        {% endfor %}
+    </div>
+    <div class="mt-3 d-flex align-items-center">
+        <input type="text" id="customKeyword" class="form-control form-control-sm mr-2" style="max-width:260px;"
+               placeholder="或手动输入，多个用逗号分隔" value="{{ job_type }}">
+        <button class="btn btn-primary btn-sm" onclick="doSearch()">
+            <i class="fas fa-search mr-1"></i> 搜索分析
+        </button>
+    </div>
+</div>
+
+<!-- 薪资统计卡片 -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="salary-card blue">
+            <div class="label">岗位数量</div>
+            <div class="value">{{ total }}</div>
+            <div class="sub">符合条件的职位</div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="salary-card green">
+            <div class="label">平均薪资</div>
+            <div class="value">{{ avg_salary }}<span style="font-size:1rem;">K</span></div>
+            <div class="sub">中位数 {{ median_salary }}K / 月</div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="salary-card orange">
+            <div class="label">薪资范围</div>
+            <div class="value">{{ min_salary|floatformat:0 }}<span style="font-size:1rem;">K</span></div>
+            <div class="sub">最低起薪 / 月</div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="salary-card purple">
+            <div class="label">最高薪资</div>
+            <div class="value">{{ max_salary|floatformat:0 }}<span style="font-size:1rem;">K</span></div>
+            <div class="sub">市场天花板 / 月</div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row">
+    <!-- 学历分布 -->
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">学历要求分布</h6>
+            </div>
+            <div class="card-body">
+                <div id="eduChart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 经验分布 -->
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">经验要求分布</h6>
+            </div>
+            <div class="card-body">
+                <div id="expChart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 薪资分布 -->
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">薪资分布</h6>
+            </div>
+            <div class="card-body">
+                <div id="salaryChart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 城市分布 -->
+    <div class="col-xl-6 col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">城市分布TOP10</h6>
+            </div>
+            <div class="card-body">
+                <div id="cityChart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Job-SDF 历史数据区域 -->
+<div class="row">
+    <div class="col-xl-8 col-lg-8">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    📊 Job-SDF 历史需求趋势（2021-2023）
+                </h6>
+                <small class="text-muted">数据来源：Job-SDF NeurIPS 2024</small>
+            </div>
+            <div class="card-body">
+                <div id="sdfHistoryChart" style="height: 280px;"></div>
+                <div id="sdfHistoryInfo" class="mt-2" style="font-size:12px;color:#888;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-4">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">🔗 相关技能推荐</h6>
+                <small class="text-muted d-block mt-1">基于Job-SDF技能共现分析</small>
+            </div>
+            <div class="card-body p-0">
+                <div id="sdfCooccurrence" style="padding:12px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var jobType = '{{ job_type }}';
+var selectedKeywords = {{ keywords|safe }};
+
+// 关键词标签点击
+$('.keyword-tag').click(function(){
+    var kw = $(this).data('kw');
+    $(this).toggleClass('active');
+    var active = [];
+    $('.keyword-tag.active').each(function(){ active.push($(this).data('kw')); });
+    $('#customKeyword').val(active.join(','));
+});
+
+function doSearch(){
+    var val = $('#customKeyword').val().trim();
+    if(!val){ alert('请选择或输入职位类型'); return; }
+    window.location.href = '{% url "job_analysis" %}?type=' + encodeURIComponent(val);
+}
+
+$('#customKeyword').keypress(function(e){ if(e.which===13) doSearch(); });
+
+// 学历分布图
+console.log('加载学历分布图，职位类型:', jobType);
+$.get('{% url "get_job_type_edu" %}?type=' + encodeURIComponent(jobType), function(res) {
+    console.log('学历分布数据:', res);
+    if(res.code === 0) {
+        if(res.data && res.data.length > 0) {
+            var chart = echarts.init(document.getElementById('eduChart'));
+            chart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                legend: { orient: 'vertical', left: 'left' },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    avoidLabelOverlap: false,
+                    itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                    label: { show: false, position: 'center' },
+                    emphasis: { label: { show: true, fontSize: 20, fontWeight: 'bold' } },
+                    data: res.data
+                }]
+            });
+        } else {
+            $('#eduChart').html('<div class="text-center text-muted py-5">暂无数据</div>');
+        }
+    } else {
+        $('#eduChart').html('<div class="text-center text-danger py-5">加载失败: ' + (res.msg || '未知错误') + '</div>');
+    }
+}).fail(function(xhr, status, error) {
+    console.error('学历分布图加载失败:', status, error);
+    $('#eduChart').html('<div class="text-center text-danger py-5">网络错误: ' + error + '</div>');
+});
+
+// 经验分布图
+console.log('加载经验分布图，职位类型:', jobType);
+$.get('{% url "get_job_type_exp" %}?type=' + encodeURIComponent(jobType), function(res) {
+    console.log('经验分布数据:', res);
+    if(res.code === 0) {
+        if(res.data && res.data.length > 0) {
+            var chart = echarts.init(document.getElementById('expChart'));
+            chart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                legend: { orient: 'vertical', left: 'left' },
+                series: [{
+                    type: 'pie',
+                    radius: '60%',
+                    data: res.data,
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+                }]
+            });
+        } else {
+            $('#expChart').html('<div class="text-center text-muted py-5">暂无数据</div>');
+        }
+    } else {
+        $('#expChart').html('<div class="text-center text-danger py-5">加载失败: ' + (res.msg || '未知错误') + '</div>');
+    }
+}).fail(function(xhr, status, error) {
+    console.error('经验分布图加载失败:', status, error);
+    $('#expChart').html('<div class="text-center text-danger py-5">网络错误: ' + error + '</div>');
+});
+
+// 薪资分布图
+console.log('加载薪资分布图，职位类型:', jobType);
+$.get('{% url "get_job_type_salary" %}?type=' + encodeURIComponent(jobType), function(res) {
+    console.log('薪资分布数据:', res);
+    if(res.code === 0) {
+        if(res.data && res.data.length > 0) {
+            var chart = echarts.init(document.getElementById('salaryChart'));
+            var names = res.data.map(function(item) { return item.name; });
+            var values = res.data.map(function(item) { return item.value; });
+            chart.setOption({
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                xAxis: { type: 'category', data: names },
+                yAxis: { type: 'value' },
+                series: [{
+                    data: values,
+                    type: 'bar',
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#83bff6' },
+                            { offset: 0.5, color: '#188df0' },
+                            { offset: 1, color: '#188df0' }
+                        ])
+                    }
+                }]
+            });
+        } else {
+            $('#salaryChart').html('<div class="text-center text-muted py-5">暂无数据</div>');
+        }
+    } else {
+        $('#salaryChart').html('<div class="text-center text-danger py-5">加载失败: ' + (res.msg || '未知错误') + '</div>');
+    }
+}).fail(function(xhr, status, error) {
+    console.error('薪资分布图加载失败:', status, error);
+    $('#salaryChart').html('<div class="text-center text-danger py-5">网络错误: ' + error + '</div>');
+});
+
+// 城市分布图
+console.log('加载城市分布图，职位类型:', jobType);
+$.get('{% url "get_job_type_city" %}?type=' + encodeURIComponent(jobType), function(res) {
+    console.log('城市分布数据:', res);
+    if(res.code === 0) {
+        if(res.data && res.data.length > 0) {
+            var chart = echarts.init(document.getElementById('cityChart'));
+            var names = res.data.map(function(item) { return item.name; });
+            var values = res.data.map(function(item) { return item.value; });
+            chart.setOption({
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                xAxis: { type: 'value' },
+                yAxis: { type: 'category', data: names.reverse() },
+                series: [{
+                    data: values.reverse(),
+                    type: 'bar',
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                            { offset: 0, color: '#1cc88a' },
+                            { offset: 1, color: '#36b9cc' }
+                        ])
+                    }
+                }]
+            });
+        } else {
+            $('#cityChart').html('<div class="text-center text-muted py-5">暂无数据</div>');
+        }
+    } else {
+        $('#cityChart').html('<div class="text-center text-danger py-5">加载失败: ' + (res.msg || '未知错误') + '</div>');
+    }
+}).fail(function(xhr, status, error) {
+    console.error('城市分布图加载失败:', status, error);
+    $('#cityChart').html('<div class="text-center text-danger py-5">网络错误: ' + error + '</div>');
+});
+
+// ── Job-SDF 历史需求趋势 ──────────────────────────────────
+(function(){
+    var kw = jobType || 'Python';
+    $.get('/analysis/api/sdf/skill-trend/?keywords=' + encodeURIComponent(kw), function(res){
+        if(res.code === 0 && res.series && res.series.length > 0){
+            var chart = echarts.init(document.getElementById('sdfHistoryChart'));
+            var s = res.series[0];
+            // 对齐到统一日期轴
+            var dataMap = {};
+            s.dates.forEach(function(d, i){ dataMap[d] = s.data[i]; });
+            var aligned = res.dates.map(function(d){ return dataMap[d] !== undefined ? dataMap[d] : null; });
+
+            chart.setOption({
+                tooltip: { trigger: 'axis', formatter: function(params){ return params[0].axisValue + '<br/>需求指数: <b>' + params[0].value + '</b>'; } },
+                grid: { left: '8%', right: '5%', top: '15%', bottom: '12%' },
+                xAxis: { type: 'category', data: res.dates, axisLabel: { fontSize: 10, interval: 5, rotate: 30 } },
+                yAxis: { type: 'value', name: '需求指数', nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { type: 'dashed' } } },
+                series: [{
+                    name: s.name,
+                    type: 'line',
+                    data: aligned,
+                    smooth: true,
+                    symbol: 'none',
+                    areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(78,115,223,0.4)' },
+                        { offset: 1, color: 'rgba(78,115,223,0.02)' }
+                    ])},
+                    lineStyle: { color: '#4e73df', width: 2 },
+                    itemStyle: { color: '#4e73df' },
+                    markLine: {
+                        silent: true,
+                        lineStyle: { color: '#e74a3b', type: 'dashed' },
+                        data: [{ type: 'average', name: '均值' }]
+                    }
+                }]
+            });
+            $('#sdfHistoryInfo').html(
+                '<i class="fas fa-info-circle text-info"></i> ' + res.note +
+                '&nbsp;&nbsp;<span class="badge badge-light">数据点: ' + res.dates.length + '个月</span>'
+            );
+        } else {
+            $('#sdfHistoryChart').html('<div class="text-center text-muted py-5"><i class="fas fa-database fa-2x mb-2"></i><p>暂无Job-SDF历史数据</p><small>请确认benchmark/dataset目录存在</small></div>');
+        }
+    });
+
+    // 技能共现推荐
+    $.get('/analysis/api/sdf/cooccurrence/?keyword=' + encodeURIComponent(kw), function(res){
+        if(res.code === 0 && res.data && res.data.length > 0){
+            var html = '<p style="font-size:12px;color:#888;margin-bottom:8px;">与 <b>' + res.keyword + '</b> 经常一起出现的技能：</p>';
+            res.data.forEach(function(item){
+                var pct = Math.min(100, Math.round(item.frequency / res.data[0].frequency * 100));
+                html += '<div style="margin-bottom:8px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">' +
+                    '<span class="font-weight-bold">' + item.skill + '</span>' +
+                    '<span class="text-muted">共现 ' + item.frequency + ' 次</span>' +
+                    '</div>' +
+                    '<div style="background:#eee;border-radius:4px;height:6px;">' +
+                    '<div style="background:linear-gradient(90deg,#4e73df,#36b9cc);width:' + pct + '%;height:6px;border-radius:4px;"></div>' +
+                    '</div></div>';
+            });
+            $('#sdfCooccurrence').html(html);
+        } else {
+            $('#sdfCooccurrence').html('<div class="text-center text-muted py-4"><small>' + (res.msg || '暂无推荐数据') + '</small></div>');
+        }
+    });
+})();
+</script>
+{% endblock %}

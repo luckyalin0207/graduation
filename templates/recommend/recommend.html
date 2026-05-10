@@ -1,0 +1,537 @@
+{% extends 'base.html' %}
+{% block title %}智能推荐 - 招聘数据分析系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.job-card {
+  background:#fff; border-radius:10px; padding:18px 20px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.07); transition:all .25s;
+  height:100%; display:flex; flex-direction:column;
+}
+.job-card:hover { box-shadow:0 6px 22px rgba(0,0,0,0.13); transform:translateY(-3px); }
+.job-title { font-size:16px; font-weight:700; color:#1d1d1f; margin-bottom:6px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.job-salary { color:#e74a3b; font-size:15px; font-weight:700; margin-bottom:8px; }
+.job-meta { color:#858796; font-size:13px; margin-bottom:6px; }
+.job-meta span { margin-right:12px; }
+.job-company-btn {
+  background:none; border:none; padding:0; color:#4e73df; font-size:13px;
+  cursor:pointer; border-bottom:1px dashed #4e73df; text-align:left;
+}
+.job-company-btn:hover { color:#2e59d9; }
+.job-tags { margin:8px 0; }
+.job-tags .badge { font-size:11px; margin-right:4px; }
+.job-actions { margin-top:auto; padding-top:12px; display:flex; gap:6px; flex-wrap:wrap; }
+.v-ok  { color:#1cc88a; font-size:10px; margin-left:3px; }
+.v-bad { color:#e74a3b; font-size:10px; margin-left:3px; }
+.v-risk{ color:#f6c23e; font-size:10px; margin-left:3px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow mb-4">
+  <div class="card-header py-3 d-flex justify-content-between align-items-center">
+    <h6 class="m-0 font-weight-bold text-primary">
+      <i class="fas fa-star text-warning mr-1"></i>为您智能推荐
+    </h6>
+    <button class="btn btn-info btn-sm" id="refreshBtn">
+      <i class="fas fa-sync-alt mr-1"></i>换一批
+    </button>
+  </div>
+  <div class="card-body">
+    <div id="recommendList">
+      <div class="text-center py-5 text-muted">
+        <i class="fas fa-spinner fa-spin fa-3x mb-3 d-block"></i>
+        <p>正在为您加载推荐...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow mb-4">
+  <div class="card-header py-3">
+    <h6 class="m-0 font-weight-bold text-primary">推荐说明</h6>
+  </div>
+  <div class="card-body">
+    <p>系统根据以下因素为您推荐职位：</p>
+    <ul class="mt-2">
+      <li>您的投递历史记录</li>
+      <li>您设置的求职意向</li>
+      <li>相似用户的投递行为（协同过滤算法）</li>
+    </ul>
+    <p class="mt-3">
+      <a href="{% url 'job_expect' %}" class="btn btn-primary btn-sm">设置求职意向</a>
+      可以让推荐更精准！
+    </p>
+  </div>
+</div>
+
+<!-- 投递确认弹窗（无链接时使用） -->
+<div class="modal fade" id="sendModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-paper-plane mr-2 text-primary"></i>投递职位</h5>
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+      </div>
+      <div class="modal-body" id="sendModalBody"></div>
+      <div class="modal-footer">
+        <a id="sendOrigLink" href="#" target="_blank" class="btn btn-outline-secondary btn-sm d-none">
+          <i class="fas fa-external-link-alt mr-1"></i>前往原始职位页
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary btn-sm" id="confirmSendBtn">
+          <i class="fas fa-bookmark mr-1"></i>记录投递进度
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 企业验证弹窗 -->
+<div class="modal fade" id="companyModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-shield-alt mr-2 text-info"></i>企业信息验证 — <span id="modalCoName"></span>
+        </h5>
+        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+      </div>
+      <div class="modal-body" id="companyModalBody"></div>
+      <div class="modal-footer">
+        <a id="coDetailLink" href="#" target="_blank" class="btn btn-outline-info btn-sm d-none">
+          <i class="fas fa-external-link-alt mr-1"></i>爱企查详情
+        </a>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  var CSRF = '{{ csrf_token }}';
+  var pendingSendId = null;
+  var verifiedCache = {};
+
+  // 预加载已验证公司
+  $.get('/company/api/list/', { limit: 500 }, function (res) {
+    if (res.code === 0) {
+      res.data.forEach(function (o) {
+        if (o.status === 'verified') {
+          verifiedCache[o.company_name] =
+            o.risk_level === '高' ? 'risk' : o.is_normal ? 'ok' : 'bad';
+        }
+      });
+    }
+  });
+
+  // ── 加载推荐列表 ──────────────────────────────────────────
+  function loadRecommend(refresh, callback) {
+    $('#recommendList').html(
+      '<div class="text-center py-5 text-muted">'
+      + '<i class="fas fa-spinner fa-spin fa-3x mb-3 d-block"></i><p>正在为您加载推荐...</p></div>'
+    );
+    var params = { limit: 9 };
+    if (refresh) params.refresh = 'true';
+
+    $.get('{% url "get_recommend_list" %}', params, function (res) {
+      if (res.code === 0 && res.data.length > 0) {
+        var html = '<div class="row">';
+        res.data.forEach(function (job) {
+          var vs = verifiedCache[job.company] || '';
+          var vi = vs === 'ok'   ? '<i class="fas fa-check-circle v-ok" title="已验证正常"></i>'
+                 : vs === 'bad'  ? '<i class="fas fa-exclamation-circle v-bad" title="已验证异常"></i>'
+                 : vs === 'risk' ? '<i class="fas fa-exclamation-triangle v-risk" title="高风险"></i>'
+                 : '';
+
+          html += '<div class="col-md-4 mb-3"><div class="job-card">';
+          html += '<div class="job-title" title="' + (job.name || '') + '">' + (job.name || '未知职位') + '</div>';
+          html += '<div class="job-salary">' + (job.salary || '薪资面议') + '</div>';
+          html += '<div class="job-meta">';
+          html += '<span><i class="fas fa-map-marker-alt mr-1"></i>' + (job.place || job.city || '未知') + '</span>';
+          html += '<span><i class="fas fa-graduation-cap mr-1"></i>' + (job.education || '不限') + '</span>';
+          html += '<span><i class="fas fa-clock mr-1"></i>' + (job.experience || '不限') + '</span>';
+          html += '</div>';
+
+          // 公司名（可点击验证）
+          html += '<button class="job-company-btn btn-verify-company" data-company="'
+            + encodeURIComponent(job.company || '') + '">'
+            + '<i class="fas fa-building mr-1"></i>' + (job.company || '未知公司') + vi
+            + '</button>';
+
+          if (job.company_type || job.scale || job.industry) {
+            html += '<div class="job-tags">';
+            if (job.company_type) html += '<span class="badge badge-light">' + job.company_type + '</span>';
+            if (job.scale)        html += '<span class="badge badge-light">' + job.scale + '</span>';
+            if (job.industry)     html += '<span class="badge badge-light">' + job.industry + '</span>';
+            html += '</div>';
+          }
+
+          html += '<div class="job-actions">';
+          html += '<button class="btn btn-primary btn-sm send-btn" data-id="' + job.job_id
+            + '" data-href="' + encodeURIComponent(job.href || '') + '">投递</button>';
+          if (job.is_favorited) {
+            html += '<button class="btn btn-warning btn-sm favorite-btn" data-id="' + job.job_id + '" data-action="cancel">已收藏</button>';
+          } else {
+            html += '<button class="btn btn-outline-warning btn-sm favorite-btn" data-id="' + job.job_id + '" data-action="favorite">收藏</button>';
+          }
+          html += '</div>';
+          html += '</div></div>';
+        });
+        html += '</div>';
+        $('#recommendList').html(html);
+      } else {
+        $('#recommendList').html(
+          '<div class="text-center py-5 text-muted">'
+          + '<i class="fas fa-inbox fa-3x mb-3 d-block"></i>'
+          + '<p>暂无推荐数据，请先<a href="{% url "job_expect" %}">设置求职意向</a>或投递一些职位</p></div>'
+        );
+      }
+    }).fail(function () {
+      $('#recommendList').html(
+        '<div class="text-center py-5 text-danger">'
+        + '<i class="fas fa-exclamation-circle fa-3x mb-3 d-block"></i><p>加载失败，请刷新重试</p></div>'
+      );
+    }).always(function () {
+      if (callback) callback();
+    });
+  }
+
+  loadRecommend();
+
+  $('#refreshBtn').click(function () {
+    var btn = $(this);
+    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>加载中...');
+    loadRecommend(true, function () {
+      btn.prop('disabled', false).html('<i class="fas fa-sync-alt mr-1"></i>换一批');
+    });
+  });
+
+  // ── Toast 提示函数 ────────────────────────────────────────
+  function showToast(message, type) {
+    var bgColor = type === 'success' ? '#1cc88a' : 
+                  type === 'error' ? '#e74a3b' : '#36b9cc';
+    var icon = type === 'success' ? 'fa-check-circle' :
+               type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle';
+    
+    var toast = $('<div>')
+      .css({
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        background: bgColor,
+        color: 'white',
+        padding: '12px 20px',
+        borderRadius: '8px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        zIndex: 9999,
+        fontSize: '14px',
+        fontWeight: '500',
+        minWidth: '200px'
+      })
+      .html('<i class="fas ' + icon + ' mr-2"></i>' + message)
+      .appendTo('body');
+    
+    setTimeout(function() {
+      toast.fadeOut(300, function() {
+        $(this).remove();
+      });
+    }, 3000);
+  }
+
+  // ── 投递按钮：智能处理有无链接的情况 ───────────────────────
+  $(document).on('click', '.send-btn', function () {
+    var jobId = $(this).data('id');
+    var href  = decodeURIComponent($(this).data('href') || '');
+    var btn   = $(this);
+    pendingSendId = jobId;
+    
+    if (href && href !== 'undefined' && href !== 'null') {
+      // 情况1: 有原始链接 - 直接打开 + 自动记录
+      window.open(href, '_blank');
+      
+      btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 记录中...');
+      
+      $.ajax({
+        url: '{% url "send_job" %}',
+        type: 'POST',
+        data: { 
+          job_id: jobId, 
+          action: 'send', 
+          csrfmiddlewaretoken: CSRF 
+        },
+        success: function (res) {
+          if (res.code === 0) {
+            btn.text('已投递')
+               .removeClass('btn-primary')
+               .addClass('btn-secondary')
+               .prop('disabled', true)
+               .removeClass('send-btn');
+            showToast('✓ 投递成功，已记录到系统', 'success');
+          } else {
+            btn.text('投递')
+               .removeClass('btn-secondary')
+               .addClass('btn-primary')
+               .prop('disabled', false);
+            showToast('记录失败: ' + res.msg, 'error');
+          }
+        },
+        error: function (xhr) {
+          btn.text('投递')
+             .removeClass('btn-secondary')
+             .addClass('btn-primary')
+             .prop('disabled', false);
+          showToast('网络错误，请稍后重试', 'error');
+        }
+      });
+    } else {
+      // 情况2: 无原始链接 - 显示搜索链接弹窗
+      $('#sendModalBody').html(
+        '<div class="text-center py-4"><div class="spinner-border text-primary"></div>'
+        + '<p class="mt-2 text-muted">正在加载职位信息...</p></div>'
+      );
+      $('#sendOrigLink').addClass('d-none');
+      $('#confirmSendBtn').prop('disabled', false).html('<i class="fas fa-bookmark mr-1"></i>记录投递进度');
+      $('#sendModal').modal({ backdrop: false, keyboard: true });
+
+      $.when(
+        $.get('/job/api/detail/' + jobId + '/'),
+        $.get('/api/resume-summary/')
+      ).done(function (jr, rr) {
+        var job    = (jr[0] || {}).data || {};
+        var resume = (rr[0] || {}).data || {};
+        renderSendModal(job, resume);
+      }).fail(function () {
+        $('#sendModalBody').html('<div class="alert alert-danger">加载失败，请重试</div>');
+      });
+    }
+  });
+
+  function buildSearchLinks(job) {
+    var name    = encodeURIComponent(job.name    || '');
+    var company = encodeURIComponent(job.company || '');
+    var links   = '';
+
+    // 根据来源构建对应平台的搜索链接
+    var src = (job.source || '').toLowerCase();
+    if (src.indexOf('boss') !== -1 || src.indexOf('直聘') !== -1) {
+      links += '<a href="https://www.zhipin.com/web/geek/job?query=' + name + '&city=100010000" target="_blank" class="btn btn-sm btn-warning mr-2">'
+        + '<i class="fas fa-search mr-1"></i>在 BOSS直聘 搜索</a>';
+    } else if (src.indexOf('51job') !== -1 || src.indexOf('前程') !== -1) {
+      links += '<a href="https://we.51job.com/pc/search?keyword=' + name + '&searchType=2" target="_blank" class="btn btn-sm btn-primary mr-2">'
+        + '<i class="fas fa-search mr-1"></i>在 51job 搜索</a>';
+    }
+
+    // 通用：在各平台搜索该公司的职位
+    if (job.company) {
+      links += '<a href="https://www.zhipin.com/web/geek/job?query=' + company + '&city=100010000" target="_blank" class="btn btn-sm btn-outline-secondary mr-2">'
+        + '<i class="fas fa-building mr-1"></i>搜索该公司职位</a>';
+    }
+
+    // 如果没有任何链接，给一个通用搜索
+    if (!links) {
+      links = '<a href="https://www.zhipin.com/web/geek/job?query=' + name + '&city=100010000" target="_blank" class="btn btn-sm btn-outline-secondary mr-2">'
+        + '<i class="fas fa-search mr-1"></i>在招聘平台搜索</a>';
+    }
+
+    return links;
+  }
+
+  function renderSendModal(job, resume) {
+    var h = '';
+
+    // 说明
+    h += '<div class="alert alert-info py-2 mb-3 small">'
+      + '<i class="fas fa-info-circle mr-2"></i>'
+      + '<strong>该职位暂无直接投递链接。</strong>请点击下方按钮在招聘平台搜索该职位，完成投递后点击"记录投递进度"。'
+      + '</div>';
+
+    // 职位信息
+    h += '<div class="border rounded p-3 mb-3">';
+    h += '<h6 class="font-weight-bold mb-1">' + (job.name || '') + '</h6>';
+    h += '<div class="d-flex flex-wrap text-muted small" style="gap:12px">';
+    h += '<span><i class="fas fa-building mr-1"></i>' + (job.company || '-') + '</span>';
+    h += '<span><i class="fas fa-map-marker-alt mr-1"></i>' + (job.place || '-') + '</span>';
+    h += '<span><i class="fas fa-coins mr-1"></i>' + (job.salary || '薪资面议') + '</span>';
+    h += '<span><i class="fas fa-graduation-cap mr-1"></i>' + (job.education || '不限') + '</span>';
+    h += '<span><i class="fas fa-clock mr-1"></i>' + (job.experience || '不限') + '</span>';
+    h += '</div>';
+    
+    // 搜索链接
+    var searchLinks = buildSearchLinks(job);
+    h += '<div class="mt-3">' + searchLinks + '</div>';
+    h += '</div>';
+
+    // 简历
+    h += '<h6 class="font-weight-bold mb-2"><i class="fas fa-file-alt mr-2 text-primary"></i>将以此简历投递</h6>';
+    if (!resume.has_resume) {
+      h += '<div class="alert alert-warning py-2">'
+        + '<i class="fas fa-exclamation-triangle mr-2"></i>您尚未上传简历！'
+        + '<a href="/users/user_info/" class="alert-link" target="_blank">立即上传</a></div>';
+    } else {
+      h += '<div class="d-flex align-items-center p-2 bg-light rounded mb-2">'
+        + '<i class="fas fa-file-pdf fa-2x text-danger mr-3"></i>'
+        + '<div><div class="font-weight-bold">' + (resume.resume_name || '简历文件') + '</div>'
+        + '<small class="text-muted">' + (resume.user_name || '')
+        + (resume.degree ? ' · ' + resume.degree : '')
+        + (resume.school ? ' · ' + resume.school : '') + '</small></div></div>';
+    }
+    if (resume.skills) h += '<p class="small mb-1 text-muted"><strong>技能：</strong>' + resume.skills + '</p>';
+    h += '<p class="small mb-2 text-muted"><strong>工作经历：</strong>' + (resume.work_count || 0) + ' 段</p>';
+
+    // 企业验证状态
+    var vs = verifiedCache[job.company] || '';
+    if (vs === 'ok') {
+      h += '<div class="alert alert-success py-2 mb-0 small"><i class="fas fa-check-circle mr-2"></i>企业已验证：经营状态正常</div>';
+    } else if (vs === 'bad' || vs === 'risk') {
+      h += '<div class="alert alert-warning py-2 mb-0 small"><i class="fas fa-exclamation-triangle mr-2"></i>注意：该企业存在风险记录，请谨慎投递</div>';
+    } else {
+      h += '<div class="alert alert-light py-2 mb-0 small border">'
+        + '<i class="fas fa-shield-alt mr-2 text-muted"></i>企业信息未验证，'
+        + '<a href="#" class="verify-in-modal" data-company="' + encodeURIComponent(job.company || '') + '">点击验证</a></div>';
+    }
+
+    $('#sendModalBody').html(h);
+  }
+
+  // 确认投递
+  $('#confirmSendBtn').click(function () {
+    if (!pendingSendId) return;
+    var btn = $(this);
+    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>记录中...');
+    $.ajax({
+      url: '{% url "send_job" %}', type: 'POST',
+      data: { job_id: pendingSendId, action: 'send', csrfmiddlewaretoken: CSRF },
+      success: function (res) {
+        if (res.code === 0) {
+          $('#sendModal').modal('hide');
+          $('.send-btn[data-id="' + pendingSendId + '"]')
+            .text('已投递').removeClass('btn-primary').addClass('btn-secondary')
+            .prop('disabled', true).removeClass('send-btn');
+          showToast('✓ 投递成功，已记录到系统', 'success');
+          pendingSendId = null;
+        } else {
+          btn.prop('disabled', false).html('<i class="fas fa-bookmark mr-1"></i>记录投递进度');
+          showToast('记录失败: ' + res.msg, 'error');
+        }
+      },
+      error: function (xhr) {
+        btn.prop('disabled', false).html('<i class="fas fa-bookmark mr-1"></i>记录投递进度');
+        showToast('投递失败，请重试', 'error');
+      }
+    });
+  });
+
+  // 投递弹窗内点击验证
+  $(document).on('click', '.verify-in-modal', function (e) {
+    e.preventDefault();
+    var co = decodeURIComponent($(this).data('company'));
+    $('#sendModal').modal('hide');
+    setTimeout(function () { openCompanyModal(co); }, 400);
+  });
+
+  // ── 收藏 ──────────────────────────────────────────────────
+  $(document).on('click', '.favorite-btn', function () {
+    var jobId  = $(this).data('id');
+    var action = $(this).data('action');
+    var btn    = $(this);
+    $.ajax({
+      url: '{% url "favorite_job" %}', type: 'POST',
+      data: { job_id: jobId, action: action, csrfmiddlewaretoken: CSRF },
+      success: function (res) {
+        if (res.code === 0) {
+          if (action === 'favorite') {
+            btn.text('已收藏').removeClass('btn-outline-warning').addClass('btn-warning').data('action', 'cancel');
+          } else {
+            btn.text('收藏').removeClass('btn-warning').addClass('btn-outline-warning').data('action', 'favorite');
+          }
+        } else { alert(res.msg); }
+      }
+    });
+  });
+
+  // ── 企业验证弹窗 ──────────────────────────────────────────
+  $(document).on('click', '.btn-verify-company', function () {
+    openCompanyModal(decodeURIComponent($(this).data('company')));
+  });
+
+  function openCompanyModal(name) {
+    if (!name) return;
+    $('#modalCoName').text(name);
+    $('#coDetailLink').addClass('d-none');
+    $('#companyModalBody').html(
+      '<div class="text-center py-4"><div class="spinner-border text-primary"></div>'
+      + '<p class="mt-2 text-muted">正在查询企业信息...</p></div>'
+    );
+    $('#companyModal').modal({ backdrop: false, keyboard: true });
+
+    $.ajax({
+      url: '/company/api/verify/', method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ company_name: name }),
+      headers: { 'X-CSRFToken': CSRF },
+      success: function (resp) {
+        renderCompanyModal(resp, name);
+        var d2 = resp.data || {}, info = d2.data || {};
+        if (d2.status === 'verified') {
+          verifiedCache[name] = info.risk_level === '高' ? 'risk' : info.is_normal ? 'ok' : 'bad';
+        }
+      },
+      error: function () {
+        $('#companyModalBody').html('<div class="alert alert-danger">网络请求失败</div>');
+      }
+    });
+  }
+
+  function renderCompanyModal(resp, name) {
+    var d2 = resp.data || {}, info = d2.data || {}, status = d2.status;
+    if (status === 'verified' && info.company_name) {
+      var isOk = info.is_normal;
+      var rc = { '低': 'success', '中': 'warning', '高': 'danger', '未知': 'secondary' };
+      var rColor = rc[info.risk_level] || 'secondary';
+      var h = '<div class="d-flex align-items-center justify-content-between mb-3"><div>';
+      h += '<span class="badge badge-pill badge-' + (isOk ? 'success' : 'danger') + ' px-3 py-2 mr-2">'
+        + (info.business_status || (isOk ? '正常' : '异常')) + '</span>';
+      h += '<span class="badge badge-pill badge-' + rColor + ' px-3 py-2">'
+        + (info.risk_level || '未知') + '风险</span></div>';
+      h += (d2.cached
+        ? '<small class="text-muted"><i class="fas fa-clock mr-1"></i>缓存于 ' + (d2.verified_at || '') + '</small>'
+        : '<small class="text-success"><i class="fas fa-sync-alt mr-1"></i>实时数据</small>') + '</div>';
+      h += '<div class="row">';
+      var flds = [
+        ['统一信用代码', info.unified_code], ['法定代表人', info.legal_person],
+        ['注册资本', info.registered_capital], ['成立日期', info.establishment_date],
+        ['企业类型', info.company_type], ['所属行业', info.industry],
+        ['人员规模', info.staff_size], ['在招职位数', info.job_count ? info.job_count + ' 个' : ''],
+        ['薪资范围', info.salary_range], ['在招城市', info.cities]
+      ];
+      flds.forEach(function (f) {
+        if (f[1]) h += '<div class="col-sm-6 mb-2"><small class="text-muted">' + f[0]
+          + '</small><div class="font-weight-bold small">' + f[1] + '</div></div>';
+      });
+      h += '</div>';
+      if (info.registered_address) h += '<p class="small mb-2">' + info.registered_address + '</p>';
+      var rs = info.risk_summary || '暂无风险记录';
+      h += rs !== '暂无风险记录'
+        ? '<div class="alert alert-warning py-2 mb-0 small"><i class="fas fa-exclamation-triangle mr-2"></i>' + rs + '</div>'
+        : '<div class="alert alert-success py-2 mb-0 small"><i class="fas fa-check-circle mr-2"></i>暂无风险记录</div>';
+      if (info.data_source_note) h += '<div class="mt-1 text-right"><small class="text-muted">' + info.data_source_note + '</small></div>';
+      $('#companyModalBody').html(h);
+      $('#coDetailLink').attr('href', 'https://aiqicha.baidu.com/s?q=' + encodeURIComponent(name)).removeClass('d-none');
+    } else if (status === 'not_found') {
+      $('#companyModalBody').html(
+        '<div class="text-center py-4"><i class="fas fa-search fa-3x text-warning mb-3 d-block"></i>'
+        + '<h6>未找到该企业信息</h6></div>'
+      );
+      $('#coDetailLink').attr('href', 'https://aiqicha.baidu.com/s?q=' + encodeURIComponent(name)).removeClass('d-none');
+    } else {
+      $('#companyModalBody').html('<div class="alert alert-warning">查询失败，请稍后重试</div>');
+    }
+  }
+});
+</script>
+{% endblock %}

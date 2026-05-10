@@ -1,0 +1,1068 @@
+{% extends 'base.html' %}
+{% block title %}岗位发展趋势分析{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">岗位发展趋势分析</h1>
+    <small class="text-muted">基于多维度数据分析，评估岗位的长期发展潜力</small>
+  </div>
+
+  <!-- 搜索区域 -->
+  <div class="card shadow mb-4">
+    <div class="card-body">
+      <div class="row align-items-end">
+        <div class="col-md-4">
+          <label class="font-weight-bold">岗位关键词</label>
+          <input type="text" id="keyword" class="form-control" placeholder="如：Python、Java、前端开发" value="Python">
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-primary" onclick="analyzeSingleJob()">
+            <i class="fas fa-search"></i> 分析岗位
+          </button>
+          <button class="btn btn-info ml-2" onclick="showCompareModal()">
+            <i class="fas fa-balance-scale"></i> 多岗位对比
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 加载提示 -->
+  <div id="loadingAlert" class="alert alert-info" style="display:none;">
+    <i class="fas fa-spinner fa-spin"></i> 正在分析数据，请稍候...
+  </div>
+
+  <!-- 数据不足提示 -->
+  <div id="errorAlert" class="alert alert-warning" style="display:none;">
+    <i class="fas fa-exclamation-triangle"></i> <span id="errorMessage"></span>
+  </div>
+
+  <!-- 分析结果区域 -->
+  <div id="resultArea" style="display:none;">
+    
+    <!-- 综合评分卡片 -->
+    <div class="row mb-4">
+      <div class="col-xl-12">
+        <div class="card shadow" id="ratingCard">
+          <div class="card-body text-center py-4">
+            <h5 class="text-muted mb-3">综合发展前景评级</h5>
+            <div class="d-flex justify-content-center align-items-center">
+              <div class="rating-badge mr-4" id="ratingBadge">
+                <div class="rating-letter" id="ratingLetter">A</div>
+                <div class="rating-score" id="ratingScore">75.8</div>
+              </div>
+              <div class="text-left">
+                <h4 class="mb-2" id="ratingLevel">良好</h4>
+                <p class="text-muted mb-0" id="ratingDesc">该岗位发展前景良好，推荐考虑</p>
+                <small class="text-muted">数据量：<span id="dataCount">0</span> 条 | 更新时间：<span id="lastUpdated">--</span></small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 五维雷达图和详细指标 -->
+    <div class="row mb-4">
+      <!-- 雷达图 -->
+      <div class="col-xl-5">
+        <div class="card shadow h-100">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">五维能力雷达图</h6>
+          </div>
+          <div class="card-body">
+            <div id="radarChart" style="height:350px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 详细指标 -->
+      <div class="col-xl-7">
+        <div class="card shadow h-100">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">详细指标分析</h6>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <!-- 需求稳定性 -->
+              <div class="col-md-6 mb-3">
+                <div class="indicator-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="font-weight-bold">
+                      <i class="fas fa-chart-line text-primary"></i> 需求稳定性
+                    </span>
+                    <span class="badge badge-primary" id="demandScore">0</span>
+                  </div>
+                  <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-primary" id="demandProgress" style="width: 0%"></div>
+                  </div>
+                  <small class="text-muted" id="demandDesc">--</small>
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      岗位数：<span id="demandCount">0</span> | 
+                      城市：<span id="demandCities">0</span>个
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 薪资水平 -->
+              <div class="col-md-6 mb-3">
+                <div class="indicator-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="font-weight-bold">
+                      <i class="fas fa-dollar-sign text-success"></i> 薪资水平
+                    </span>
+                    <span class="badge badge-success" id="salaryScore">0</span>
+                  </div>
+                  <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-success" id="salaryProgress" style="width: 0%"></div>
+                  </div>
+                  <small class="text-muted" id="salaryDesc">--</small>
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      平均：<span id="avgSalary">0</span>k | 
+                      高薪占比：<span id="highSalaryRatio">0</span>%
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 技能门槛 -->
+              <div class="col-md-6 mb-3">
+                <div class="indicator-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="font-weight-bold">
+                      <i class="fas fa-graduation-cap text-info"></i> 技能门槛
+                    </span>
+                    <span class="badge badge-info" id="skillScore">0</span>
+                  </div>
+                  <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-info" id="skillProgress" style="width: 0%"></div>
+                  </div>
+                  <small class="text-muted" id="skillDesc">--</small>
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      学历门槛：<span id="eduAccess">0</span>% | 
+                      经验门槛：<span id="expAccess">0</span>%
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 行业分布 -->
+              <div class="col-md-6 mb-3">
+                <div class="indicator-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="font-weight-bold">
+                      <i class="fas fa-industry text-warning"></i> 行业分布
+                    </span>
+                    <span class="badge badge-warning" id="industryScore">0</span>
+                  </div>
+                  <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-warning" id="industryProgress" style="width: 0%"></div>
+                  </div>
+                  <small class="text-muted" id="industryDesc">--</small>
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      行业数：<span id="industryCount">0</span>个
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 公司规模 -->
+              <div class="col-md-12 mb-3">
+                <div class="indicator-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="font-weight-bold">
+                      <i class="fas fa-building text-danger"></i> 公司规模
+                    </span>
+                    <span class="badge badge-danger" id="companyScore">0</span>
+                  </div>
+                  <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-danger" id="companyProgress" style="width: 0%"></div>
+                  </div>
+                  <small class="text-muted" id="companyDesc">--</small>
+                  <div class="mt-2">
+                    <small class="text-muted">
+                      大公司占比：<span id="largeCompanyRatio">0</span>%
+                    </small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 薪资分布和城市分布 -->
+    <div class="row mb-4">
+      <div class="col-xl-6">
+        <div class="card shadow h-100">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">薪资分布</h6>
+          </div>
+          <div class="card-body">
+            <div id="salaryChart" style="height:300px;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-6">
+        <div class="card shadow h-100">
+          <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">热门城市TOP10</h6>
+          </div>
+          <div class="card-body">
+            <div id="cityChart" style="height:300px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史趋势分析（Job-SDF数据） -->
+    <div class="card shadow mb-4" id="historicalTrendCard" style="display:none;">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+          <i class="fas fa-chart-line"></i> 历史需求趋势（2021-2023 + 实时数据）
+        </h6>
+        <small class="text-muted">数据来源：Job-SDF数据集（NeurIPS 2024）+ 实时爬取数据</small>
+      </div>
+      <div class="card-body">
+        <div class="row mb-3">
+          <div class="col-md-12">
+            <div id="historyChart" style="height:400px;"></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+              <h6 class="text-muted mb-2">历史增长率</h6>
+              <h4 class="mb-0" id="histGrowthRate">--</h4>
+              <small class="text-muted" id="histTrend">2021→2023</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+              <h6 class="text-muted mb-2">平均需求指数</h6>
+              <h4 class="mb-0" id="histAvgDemand">--</h4>
+              <small class="text-muted">（基准=100）</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+              <h6 class="text-muted mb-2">峰值需求指数</h6>
+              <h4 class="mb-0" id="histMaxDemand">--</h4>
+              <small class="text-muted">历史最高点</small>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="text-center p-3 bg-light rounded">
+              <h6 class="text-muted mb-2">需求波动性</h6>
+              <h4 class="mb-0" id="histVolatility">--</h4>
+              <small class="text-muted" id="histVolatilityDesc">--</small>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <small class="text-muted">
+            <i class="fas fa-info-circle"></i>
+            纵轴为<strong>需求相对指数</strong>，以2021年1月为基准（=100）。
+            蓝色折线为Job-SDF历史数据（2021-2023），红点为当前实时爬取数据（仅供参考）。
+          </small>
+        </div>
+      </div>
+    </div>
+
+    <!-- 技能推荐 -->
+    <div class="card shadow mb-4" id="skillRecommendCard" style="display:none;">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+          <i class="fas fa-lightbulb"></i> 相关技能推荐
+        </h6>
+        <small class="text-muted">基于技能共现关系，推荐与该岗位相关的技能</small>
+      </div>
+      <div class="card-body">
+        <div id="skillRecommendList" class="row"></div>
+      </div>
+    </div>
+
+    <!-- 职业发展建议 -->
+    <div class="card shadow mb-4">
+      <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">
+          <i class="fas fa-lightbulb"></i> 职业发展建议
+        </h6>
+      </div>
+      <div class="card-body">
+        <div id="adviceList"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 对比结果区域 -->
+  <div id="compareArea" style="display:none;">
+    <div class="card shadow mb-4">
+      <div class="card-header py-3 d-flex justify-content-between align-items-center">
+        <h6 class="m-0 font-weight-bold text-primary">多岗位对比结果</h6>
+        <button class="btn btn-sm btn-secondary" onclick="hideCompare()">
+          <i class="fas fa-times"></i> 关闭对比
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover">
+            <thead class="thead-light">
+              <tr>
+                <th>岗位</th>
+                <th>综合评分</th>
+                <th>评级</th>
+                <th>需求稳定性</th>
+                <th>薪资水平</th>
+                <th>平均薪资</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="compareTableBody"></tbody>
+          </table>
+        </div>
+        <div class="mt-3">
+          <div class="alert alert-success">
+            <i class="fas fa-trophy"></i> 
+            <strong>最佳选择：</strong>
+            <span id="bestChoice">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 使用说明 -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3">
+      <h6 class="m-0 font-weight-bold text-secondary">功能说明</h6>
+    </div>
+    <div class="card-body text-muted small">
+      <h6 class="font-weight-bold">分析维度：</h6>
+      <ul>
+        <li><strong>需求稳定性（30%）：</strong>分析岗位数量、来源多样性、城市分布，评估市场需求的稳定程度</li>
+        <li><strong>薪资水平（25%）：</strong>分析平均薪资、薪资分布、高薪占比，评估收入潜力</li>
+        <li><strong>技能门槛（15%）：</strong>分析学历和经验要求，评估入行难度</li>
+        <li><strong>行业分布（15%）：</strong>分析行业多样性，评估就业选择空间</li>
+        <li><strong>公司规模（15%）：</strong>分析公司规模分布，评估就业质量</li>
+      </ul>
+      <h6 class="font-weight-bold mt-3">评级标准：</h6>
+      <p class="mb-0">
+        <span class="badge badge-success">S级（80-100分）</span> 优秀，强烈推荐 | 
+        <span class="badge badge-primary">A级（70-79分）</span> 良好，推荐考虑 | 
+        <span class="badge badge-info">B级（60-69分）</span> 中等，可以考虑 | 
+        <span class="badge badge-warning">C级（50-59分）</span> 一般，谨慎考虑 | 
+        <span class="badge badge-danger">D级（0-49分）</span> 较差，不建议
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- 多岗位对比模态框 -->
+<div class="modal fade" id="compareModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">多岗位对比</h5>
+        <button type="button" class="close" data-dismiss="modal">
+          <span>&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="font-weight-bold">输入要对比的岗位（用逗号分隔，最多5个）</label>
+          <input type="text" id="compareKeywords" class="form-control" 
+                 placeholder="例如：Python,Java,前端开发,数据分析,产品经理">
+          <small class="form-text text-muted">建议输入2-5个岗位关键词进行对比</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" onclick="compareJobs()">开始对比</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.rating-badge {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.rating-letter {
+  font-size: 48px;
+  font-weight: bold;
+  line-height: 1;
+}
+.rating-score {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 5px;
+}
+.indicator-card {
+  padding: 15px;
+  background: #f8f9fc;
+  border-radius: 8px;
+  border-left: 4px solid #4e73df;
+}
+.advice-item {
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  border-left: 4px solid;
+}
+.advice-positive { 
+  background: #d4edda; 
+  border-color: #28a745; 
+}
+.advice-warning { 
+  background: #fff3cd; 
+  border-color: #ffc107; 
+}
+.advice-info { 
+  background: #d1ecf1; 
+  border-color: #17a2b8; 
+}
+.advice-summary { 
+  background: #e7f3ff; 
+  border-color: #4e73df; 
+}
+.skill-recommend-item {
+  padding: 15px;
+  background: #f8f9fc;
+  border-radius: 8px;
+  border: 1px solid #e3e6f0;
+  margin-bottom: 15px;
+  transition: all 0.3s;
+}
+.skill-recommend-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+.relevance-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+</style>
+
+<script src="/static/js/echarts.min.js"></script>
+<script>
+var radarChart, salaryChart, cityChart, historyChart;
+
+// 初始化图表（延迟到结果显示时）
+function initCharts() {
+  if (!radarChart) {
+    radarChart = echarts.init(document.getElementById('radarChart'));
+  }
+  if (!salaryChart) {
+    salaryChart = echarts.init(document.getElementById('salaryChart'));
+  }
+  if (!cityChart) {
+    cityChart = echarts.init(document.getElementById('cityChart'));
+  }
+  // historyChart 不在这里初始化，因为容器此时是 display:none
+  // 在 renderAnalysisResult 里 show() 之后再初始化
+}
+
+// 分析单个岗位
+function analyzeSingleJob() {
+  var keyword = $('#keyword').val().trim();
+  if (!keyword) {
+    alert('请输入岗位关键词');
+    return;
+  }
+
+  $('#loadingAlert').show();
+  $('#errorAlert').hide();
+  $('#resultArea').hide();
+  $('#compareArea').hide();
+
+  $.get('{% url "get_trend_predict_data" %}', {
+    keyword: keyword,
+    action: 'analyze'
+  }, function(res) {
+    $('#loadingAlert').hide();
+
+    if (!res.success) {
+      var errorMsg = res.message || '分析失败';
+      if (res.suggestion) {
+        errorMsg += '。' + res.suggestion;
+      }
+      if (res.error) {
+        console.error('详细错误:', res.error);
+      }
+      $('#errorMessage').text(errorMsg);
+      $('#errorAlert').show();
+      return;
+    }
+
+    // 显示结果
+    $('#resultArea').show();
+    
+    // 延迟初始化图表，确保 DOM 完全渲染
+    setTimeout(function() {
+      initCharts();
+      renderAnalysisResult(res);
+    }, 100);
+  }).fail(function(xhr, status, error) {
+    $('#loadingAlert').hide();
+    var errorMsg = '请求失败，请稍后重试';
+    if (xhr.responseJSON && xhr.responseJSON.message) {
+      errorMsg = xhr.responseJSON.message;
+    } else if (xhr.responseText) {
+      console.error('服务器响应:', xhr.responseText);
+      errorMsg += '（状态码：' + xhr.status + '）';
+    }
+    $('#errorMessage').text(errorMsg);
+    $('#errorAlert').show();
+  });
+}
+
+// 渲染分析结果
+function renderAnalysisResult(data) {
+  // 1. 综合评分卡片
+  var overall = data.overall_score;
+  $('#ratingLetter').text(overall.rating);
+  $('#ratingScore').text(overall.total_score);
+  $('#ratingLevel').text(overall.level);
+  $('#ratingDesc').text(overall.description);
+  $('#dataCount').text(data.data_count);
+  $('#lastUpdated').text(data.last_updated);
+  
+  // 设置评级颜色
+  $('#ratingCard').css('border-top', '4px solid ' + overall.color);
+  $('#ratingBadge').css('background', overall.color);
+  $('#ratingBadge').css('color', '#fff');
+
+  // 2. 五维雷达图
+  var radarData = [
+    data.demand_stability.score,
+    data.salary_analysis.score,
+    data.skill_analysis.score,
+    data.industry_analysis.score,
+    data.company_analysis.score
+  ];
+  
+  radarChart.setOption({
+    tooltip: {},
+    radar: {
+      indicator: [
+        { name: '需求稳定性', max: 100 },
+        { name: '薪资水平', max: 100 },
+        { name: '技能门槛', max: 100 },
+        { name: '行业分布', max: 100 },
+        { name: '公司规模', max: 100 }
+      ],
+      radius: '65%'
+    },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: radarData,
+        name: data.keyword,
+        areaStyle: {
+          color: 'rgba(78, 115, 223, 0.3)'
+        },
+        lineStyle: {
+          color: '#4e73df',
+          width: 2
+        },
+        itemStyle: {
+          color: '#4e73df'
+        }
+      }]
+    }]
+  });
+
+  // 3. 详细指标
+  updateIndicator('demand', data.demand_stability);
+  $('#demandCount').text(data.demand_stability.total_count);
+  $('#demandCities').text(data.demand_stability.city_diversity);
+
+  updateIndicator('salary', data.salary_analysis);
+  $('#avgSalary').text(data.salary_analysis.avg_salary);
+  $('#highSalaryRatio').text(data.salary_analysis.high_salary_ratio);
+
+  updateIndicator('skill', data.skill_analysis);
+  $('#eduAccess').text(data.skill_analysis.edu_accessibility);
+  $('#expAccess').text(data.skill_analysis.exp_accessibility);
+
+  updateIndicator('industry', data.industry_analysis);
+  $('#industryCount').text(data.industry_analysis.industry_count);
+
+  updateIndicator('company', data.company_analysis);
+  $('#largeCompanyRatio').text(data.company_analysis.large_company_ratio);
+
+  // 4. 薪资分布图
+  var salaryDist = data.salary_analysis.salary_distribution;
+  console.log('薪资分布数据:', salaryDist);
+  
+  var salaryData = Object.keys(salaryDist).map(k => ({
+    name: k,
+    value: salaryDist[k]
+  })).filter(item => item.value > 0);  // 过滤掉值为0的项
+  
+  console.log('薪资分布图表数据:', salaryData);
+  
+  if (salaryData.length === 0) {
+    $('#salaryChart').html('<div class="text-center text-muted py-5">暂无薪资分布数据</div>');
+  } else {
+    salaryChart.setOption({
+      tooltip: {
+        trigger: 'item',
+        formatter: '{b}: {c}个 ({d}%)'
+      },
+      legend: {
+        orient: 'vertical',
+        right: 10,
+        top: 'center',
+        textStyle: {
+          fontSize: 12
+        }
+      },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['40%', '50%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 10,
+          borderColor: '#fff',
+          borderWidth: 2
+        },
+        label: {
+          show: false,
+          position: 'center'
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: 16,
+            fontWeight: 'bold'
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: salaryData
+      }]
+    });
+  }
+
+  // 5. 城市分布图
+  var topCities = data.demand_stability.top_cities || [];
+  console.log('城市分布数据:', topCities);
+  
+  if (topCities.length === 0) {
+    $('#cityChart').html('<div class="text-center text-muted py-5">暂无城市分布数据</div>');
+  } else {
+    var cityData = topCities.map(c => c.count);
+    var cityNames = topCities.map(c => c.city);
+    
+    console.log('城市名称:', cityNames);
+    console.log('城市数量:', cityData);
+    
+    cityChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        formatter: '{b}: {c}个岗位'
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'value'
+      },
+      yAxis: {
+        type: 'category',
+        data: cityNames
+      },
+      series: [{
+        type: 'bar',
+        data: cityData,
+        itemStyle: {
+          color: '#4e73df',
+          borderRadius: [0, 5, 5, 0]
+        },
+        barWidth: '60%'
+      }]
+    });
+  }
+
+  // 6. 职业发展建议
+  var adviceHtml = '';
+  data.career_advice.forEach(function(advice) {
+    var typeClass = 'advice-' + advice.type;
+    var icon = advice.type === 'positive' ? 'fa-check-circle text-success' :
+               advice.type === 'warning' ? 'fa-exclamation-triangle text-warning' :
+               advice.type === 'info' ? 'fa-info-circle text-info' :
+               'fa-lightbulb text-primary';
+    
+    adviceHtml += '<div class="advice-item ' + typeClass + '">';
+    adviceHtml += '<h6 class="font-weight-bold mb-2">';
+    adviceHtml += '<i class="fas ' + icon + '"></i> ' + advice.title;
+    adviceHtml += '</h6>';
+    adviceHtml += '<p class="mb-0">' + advice.content + '</p>';
+    adviceHtml += '</div>';
+  });
+  $('#adviceList').html(adviceHtml);
+
+  // 7. 历史趋势分析（如果有数据）
+  if (data.historical_trend && data.historical_trend.has_historical_data) {
+    $('#historicalTrendCard').show();
+    // 更新卡片标题说明
+    var timeRange = data.historical_trend.time_range || '2021-01 至 2026-04';
+    $('#historicalTrendCard .card-header small').text(
+      '数据来源：Job-SDF数据集（NeurIPS 2024）+ 实时爬取数据 | 时间范围：' + timeRange
+    );
+    // 卡片显示后重新初始化图表（避免容器尺寸为0的问题）
+    if (historyChart) { historyChart.dispose(); historyChart = null; }
+    historyChart = echarts.init(document.getElementById('historyChart'));
+    renderHistoricalTrend(data.historical_trend);
+  } else {
+    $('#historicalTrendCard').hide();
+    if (data.historical_trend && data.historical_trend.message) {
+      console.log('历史趋势提示:', data.historical_trend.message);
+    }
+  }
+
+  // 8. 技能推荐（如果有数据）
+  if (data.skill_recommendations && data.skill_recommendations.has_recommendations) {
+    $('#skillRecommendCard').show();
+    renderSkillRecommendations(data.skill_recommendations);
+  } else {
+    $('#skillRecommendCard').hide();
+    if (data.skill_recommendations && data.skill_recommendations.message) {
+      console.log('技能推荐提示:', data.skill_recommendations.message);
+    }
+  }
+}
+
+// 渲染历史趋势
+function renderHistoricalTrend(histData) {
+  console.log('渲染历史趋势:', histData);
+  
+  // 更新统计数据
+  var growthText = (histData.growth_rate > 0 ? '+' : '') + histData.growth_rate + '%';
+  $('#histGrowthRate').html(growthText);
+  $('#histTrend').html(histData.trend_icon + ' ' + histData.trend_desc);
+  $('#histAvgDemand').text(histData.avg_demand);
+  $('#histMaxDemand').text(histData.max_demand);
+  $('#histVolatility').text(histData.volatility + '%');
+  $('#histVolatilityDesc').text(histData.volatility_desc);
+  
+  // 设置增长率颜色
+  if (histData.growth_rate > 10) {
+    $('#histGrowthRate').parent().removeClass('bg-light bg-danger').addClass('bg-success text-white');
+  } else if (histData.growth_rate < -10) {
+    $('#histGrowthRate').parent().removeClass('bg-light bg-success').addClass('bg-danger text-white');
+  } else {
+    $('#histGrowthRate').parent().removeClass('bg-success bg-danger text-white').addClass('bg-light');
+  }
+
+  // 区分历史数据和当前爬取数据（最后一个点是2026-04）
+  var dates = histData.dates;
+  var demands = histData.demands;
+  var splitIdx = dates.indexOf('2026-04');
+  
+  var histDates = splitIdx >= 0 ? dates.slice(0, splitIdx) : dates;
+  var histValues = splitIdx >= 0 ? demands.slice(0, splitIdx) : demands;
+  var currentDate = splitIdx >= 0 ? [dates[splitIdx]] : [];
+  var currentValue = splitIdx >= 0 ? [demands[splitIdx]] : [];
+  
+  // 绘制历史趋势图
+  historyChart.setOption({
+    title: {
+      text: '需求趋势指数（以2021年1月为基准=100）',
+      subtext: histData.data_source,
+      left: 'center',
+      textStyle: { fontSize: 14 },
+      subtextStyle: { fontSize: 11, color: '#999' }
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: function(params) {
+        var result = params[0].name + '<br/>';
+        params.forEach(function(p) {
+          if (p.value !== undefined && p.value !== null) {
+            var label = p.seriesName === '当前爬取数据' ? 
+              '当前爬取（参考）: ' + p.value :
+              '需求指数: ' + p.value;
+            result += p.marker + label + '<br/>';
+          }
+        });
+        return result;
+      }
+    },
+    legend: {
+      data: ['历史需求指数（Job-SDF）', '当前爬取数据（参考）'],
+      bottom: 0
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      top: '20%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLabel: {
+        rotate: 45,
+        fontSize: 10,
+        formatter: function(val) {
+          return val === '2026-04' ? '2026-04\n(实时)' : val;
+        }
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: '需求指数',
+      nameTextStyle: { color: '#666' },
+      axisLabel: { formatter: '{value}' }
+    },
+    series: [
+      {
+        name: '历史需求指数（Job-SDF）',
+        type: 'line',
+        data: histDates.map(function(d, i) {
+          return { value: histValues[i] };
+        }).concat(currentDate.map(function() { return null; })),
+        smooth: true,
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(78, 115, 223, 0.4)' },
+              { offset: 1, color: 'rgba(78, 115, 223, 0.05)' }
+            ]
+          }
+        },
+        lineStyle: { color: histData.trend_color, width: 2 },
+        itemStyle: { color: histData.trend_color },
+        markLine: {
+          silent: true,
+          lineStyle: { color: '#aaa', type: 'dashed' },
+          data: [{ type: 'average', name: '均值' }]
+        }
+      },
+      {
+        name: '当前爬取数据（参考）',
+        type: 'scatter',
+        data: histDates.map(function() { return null; }).concat(
+          currentDate.map(function(d, i) { return currentValue[i]; })
+        ),
+        symbolSize: 12,
+        itemStyle: { color: '#e74a3b' },
+        label: {
+          show: currentDate.length > 0,
+          position: 'top',
+          formatter: '实时',
+          color: '#e74a3b',
+          fontSize: 11
+        }
+      }
+    ]
+  });
+}
+
+// 渲染技能推荐
+function renderSkillRecommendations(skillData) {
+  console.log('渲染技能推荐:', skillData);
+  
+  var html = '';
+  skillData.recommendations.forEach(function(skill) {
+    var relevanceClass = skill.relevance === '高' ? 'success' :
+                         skill.relevance === '中' ? 'primary' : 'secondary';
+    
+    html += '<div class="col-md-6 col-lg-4">';
+    html += '<div class="skill-recommend-item">';
+    html += '<div class="d-flex justify-content-between align-items-start mb-2">';
+    html += '<h6 class="mb-0">' + skill.local_keyword + '</h6>';
+    html += '<span class="badge badge-' + relevanceClass + ' relevance-badge">' + skill.relevance + '</span>';
+    html += '</div>';
+    html += '<p class="text-muted small mb-2">' + skill.skill_name + '</p>';
+    html += '<div class="d-flex align-items-center">';
+    html += '<i class="fas fa-link text-primary mr-2"></i>';
+    html += '<small class="text-muted">共现频率: ' + skill.frequency + '</small>';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+  });
+  
+  $('#skillRecommendList').html(html);
+}
+
+// 更新指标卡片
+function updateIndicator(prefix, data) {
+  $('#' + prefix + 'Score').text(data.score);
+  $('#' + prefix + 'Progress').css('width', data.score + '%');
+  $('#' + prefix + 'Desc').text(data.description);
+}
+
+// 显示对比模态框
+function showCompareModal() {
+  $('#compareModal').modal({backdrop: false, keyboard: true});
+}
+
+// 对比多个岗位
+function compareJobs() {
+  var keywords = $('#compareKeywords').val().trim();
+  if (!keywords) {
+    alert('请输入要对比的岗位');
+    return;
+  }
+
+  $('#compareModal').modal('hide');
+  $('#loadingAlert').show();
+  $('#errorAlert').hide();
+  $('#resultArea').hide();
+  $('#compareArea').hide();
+
+  console.log('开始对比岗位:', keywords);
+
+  $.get('{% url "get_trend_predict_data" %}', {
+    keywords: keywords,
+    action: 'compare'
+  }, function(res) {
+    $('#loadingAlert').hide();
+    
+    console.log('对比结果:', res);
+
+    if (!res.success) {
+      var errorMsg = res.message || '对比失败，请检查关键词是否正确';
+      console.error('对比失败:', errorMsg);
+      $('#errorMessage').text(errorMsg);
+      $('#errorAlert').show();
+      return;
+    }
+
+    if (!res.comparison || res.comparison.length === 0) {
+      $('#errorMessage').text('没有找到匹配的岗位数据，请检查关键词或先爬取数据');
+      $('#errorAlert').show();
+      return;
+    }
+
+    // 显示对比结果
+    $('#compareArea').show();
+    renderCompareResult(res);
+  }).fail(function(xhr, status, error) {
+    $('#loadingAlert').hide();
+    var errorMsg = '请求失败，请稍后重试';
+    if (xhr.responseJSON && xhr.responseJSON.message) {
+      errorMsg = xhr.responseJSON.message;
+    }
+    console.error('AJAX 错误:', xhr, status, error);
+    $('#errorMessage').text(errorMsg);
+    $('#errorAlert').show();
+  });
+}
+
+// 渲染对比结果
+function renderCompareResult(data) {
+  console.log('渲染对比结果:', data);
+  
+  // 清除之前的警告信息
+  $('#compareArea .alert-warning').remove();
+  
+  // 显示失败的关键词提示
+  if (data.failed_keywords && data.failed_keywords.length > 0) {
+    var warningHtml = '<div class="alert alert-warning mb-3">';
+    warningHtml += '<i class="fas fa-exclamation-triangle"></i> ';
+    warningHtml += '以下岗位数据不足，无法对比: <strong>' + data.failed_keywords.join('、') + '</strong>';
+    warningHtml += '</div>';
+    $('#compareArea .card-body').prepend(warningHtml);
+  }
+  
+  var tbody = '';
+  if (data.comparison && data.comparison.length > 0) {
+    data.comparison.forEach(function(item) {
+      var ratingColor = item.rating === 'S' ? 'success' :
+                        item.rating === 'A' ? 'primary' :
+                        item.rating === 'B' ? 'info' :
+                        item.rating === 'C' ? 'warning' : 'danger';
+      
+      tbody += '<tr>';
+      tbody += '<td><strong>' + item.keyword + '</strong></td>';
+      tbody += '<td>' + item.score + '</td>';
+      tbody += '<td><span class="badge badge-' + ratingColor + '">' + item.rating + '</span></td>';
+      tbody += '<td>' + item.demand_score + '</td>';
+      tbody += '<td>' + item.salary_score + '</td>';
+      tbody += '<td>' + item.avg_salary + 'k</td>';
+      tbody += '<td><button class="btn btn-sm btn-primary" onclick="analyzeFromCompare(\'' + item.keyword + '\')">详细分析</button></td>';
+      tbody += '</tr>';
+    });
+  } else {
+    tbody = '<tr><td colspan="7" class="text-center text-muted py-4">没有可对比的数据</td></tr>';
+  }
+  
+  $('#compareTableBody').html(tbody);
+
+  if (data.best_choice) {
+    $('#bestChoice').html(
+      '<strong>' + data.best_choice.keyword + '</strong> ' +
+      '（评分：' + data.best_choice.score + '，评级：' +
+      '<span class="badge badge-success">' + data.best_choice.rating + '</span>）'
+    );
+  } else {
+    $('#bestChoice').text('暂无数据');
+  }
+}
+
+// 从对比结果跳转到详细分析
+function analyzeFromCompare(keyword) {
+  $('#keyword').val(keyword);
+  hideCompare();
+  analyzeSingleJob();
+}
+
+// 隐藏对比结果
+function hideCompare() {
+  $('#compareArea').hide();
+}
+
+// 响应式调整
+$(window).resize(function() {
+  if (radarChart) radarChart.resize();
+  if (salaryChart) salaryChart.resize();
+  if (cityChart) cityChart.resize();
+  if (historyChart) historyChart.resize();
+});
+
+// 页面加载时自动分析
+$(function() {
+  // 清除所有可能残留的 modal backdrop
+  $('.modal-backdrop').remove();
+  $('body').removeClass('modal-open');
+  $('body').css('padding-right', '');
+  
+  analyzeSingleJob();
+});
+
+// 确保模态框关闭时清理 backdrop
+$('#compareModal').on('hidden.bs.modal', function() {
+  $('.modal-backdrop').remove();
+  $('body').removeClass('modal-open');
+  $('body').css('padding-right', '');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+
+{% block title %}求职意向 - 招聘数据分析系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">设置求职意向</h6>
+            </div>
+            <div class="card-body">
+                <form id="expectForm">
+                    {% csrf_token %}
+                    <div id="expectList">
+                        {% for item in items %}
+                        <div class="expect-item border rounded p-3 mb-3">
+                            <div class="form-group">
+                                <label>期望职位</label>
+                                <input type="text" name="key_word" value="{{ item.key_word|default:'' }}" placeholder="如：Python开发、前端工程师" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>期望地点</label>
+                                <input type="text" name="place" value="{{ item.place|default:'' }}" placeholder="如：北京、上海、深圳" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label>期望薪资 (K/月)</label>
+                                <div class="row">
+                                    <div class="col-5">
+                                        <input type="number" name="salary_min" value="{{ item.salary_min|default:'' }}" placeholder="最低" class="form-control">
+                                    </div>
+                                    <div class="col-2 text-center" style="line-height: 38px;">-</div>
+                                    <div class="col-5">
+                                        <input type="number" name="salary_max" value="{{ item.salary_max|default:'' }}" placeholder="最高" class="form-control">
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-outline-danger btn-sm remove-item">删除该意向</button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="addItem">新增意向</button>
+                    <button type="button" class="btn btn-primary" id="saveBtn">保存设置</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">设置说明</h6>
+            </div>
+            <div class="card-body">
+                <p>设置求职意向可以帮助系统更精准地为您推荐职位：</p>
+                <ul class="mt-3">
+                    <li><strong>期望职位</strong>：填写您想从事的职位类型关键词</li>
+                    <li><strong>期望地点</strong>：填写您希望工作的城市</li>
+                    <li><strong>期望薪资</strong>：填写您期望的薪资范围（单位：K/月）</li>
+                    <li><strong>多条意向</strong>：可添加多条不同的期望组合</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    function newItemHtml() {
+        return '' +
+        '<div class="expect-item border rounded p-3 mb-3">' +
+            '<div class="form-group">' +
+                '<label>期望职位</label>' +
+                '<input type="text" name="key_word" placeholder="如：Python开发、前端工程师" class="form-control">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>期望地点</label>' +
+                '<input type="text" name="place" placeholder="如：北京、上海、深圳" class="form-control">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label>期望薪资 (K/月)</label>' +
+                '<div class="row">' +
+                    '<div class="col-5"><input type="number" name="salary_min" placeholder="最低" class="form-control"></div>' +
+                    '<div class="col-2 text-center" style="line-height: 38px;">-</div>' +
+                    '<div class="col-5"><input type="number" name="salary_max" placeholder="最高" class="form-control"></div>' +
+                '</div>' +
+            '</div>' +
+            '<button type="button" class="btn btn-outline-danger btn-sm remove-item">删除该意向</button>' +
+        '</div>';
+    }
+
+    $('#addItem').click(function(){
+        $('#expectList').append(newItemHtml());
+    });
+
+    $('#expectList').on('click', '.remove-item', function(){
+        if($('#expectList .expect-item').length <= 1) {
+            alert('至少保留一条求职意向');
+            return;
+        }
+        $(this).closest('.expect-item').remove();
+    });
+
+    $('#saveBtn').click(function(){
+        $.ajax({
+            url: '{% url "job_expect" %}',
+            type: 'POST',
+            data: $('#expectForm').serialize(),
+            success: function(res){
+                if(res.code === 0){
+                    alert(res.msg);
+                } else {
+                    alert(res.msg);
+                }
+            },
+            error: function(){
+                alert('保存失败，请重试');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

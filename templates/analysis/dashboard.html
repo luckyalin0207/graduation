@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>数据可视化大屏 - 招聘数据分析系统</title>
+    <script src="/static/vendor/jquery/jquery.min.js"></script>
+    <script src="/static/js/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0e27; 
+            color: #fff; 
+            font-family: 'Microsoft YaHei', sans-serif;
+            overflow-x: hidden;
+        }
+        .container { 
+            width: 100%; 
+            min-height: 100vh; 
+            padding: 15px;
+            background: 
+                radial-gradient(ellipse at 10% 90%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 90% 10%, rgba(123, 47, 247, 0.1) 0%, transparent 50%);
+        }
+        .header { 
+            text-align: center; 
+            padding: 15px 0 25px;
+            position: relative;
+        }
+        .header h1 { 
+            font-size: 36px; 
+            background: linear-gradient(90deg, #00d4ff, #7b2ff7, #00d4ff); 
+            background-size: 200% auto;
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent;
+            animation: shine 3s linear infinite;
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+            letter-spacing: 8px;
+        }
+        @keyframes shine {
+            to { background-position: 200% center; }
+        }
+        .header .subtitle {
+            color: rgba(255,255,255,0.5);
+            font-size: 14px;
+            margin-top: 8px;
+            letter-spacing: 3px;
+        }
+        .header .back-btn { 
+            position: absolute; 
+            left: 20px; 
+            top: 20px; 
+            padding: 10px 25px; 
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(123, 47, 247, 0.2));
+            border: 1px solid rgba(0, 212, 255, 0.5); 
+            color: #00d4ff; 
+            border-radius: 25px; 
+            cursor: pointer; 
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .header .back-btn:hover { 
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.4), rgba(123, 47, 247, 0.4));
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .header .time {
+            position: absolute;
+            right: 20px;
+            top: 25px;
+            color: #00d4ff;
+            font-size: 18px;
+        }
+        .main-content {
+            display: flex;
+            gap: 15px;
+            height: calc(100vh - 120px);
+        }
+        .left-panel, .right-panel {
+            width: 25%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .center-panel {
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .chart-box { 
+            flex: 1;
+            background: rgba(10, 20, 50, 0.8);
+            border-radius: 10px; 
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .chart-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00d4ff, transparent);
+        }
+        .chart-box .title { 
+            padding: 12px 20px; 
+            font-size: 15px;
+            color: #00d4ff;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+            display: flex;
+            align-items: center;
+        }
+        .chart-box .title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: linear-gradient(180deg, #00d4ff, #7b2ff7);
+            margin-right: 10px;
+            border-radius: 2px;
+        }
+        .chart-box .chart { 
+            height: calc(100% - 45px);
+            padding: 10px;
+        }
+        .map-box {
+            flex: 2;
+        }
+        .map-box .chart {
+            height: calc(100% - 45px);
+        }
+        .stats-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .stat-card {
+            flex: 1;
+            background: rgba(10, 20, 50, 0.8);
+            border-radius: 10px;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #00d4ff, #7b2ff7);
+        }
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-card .label {
+            color: rgba(255,255,255,0.6);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .rank-list {
+            padding: 10px 15px;
+            height: calc(100% - 45px);
+            overflow-y: auto;
+        }
+        .rank-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .rank-item .rank {
+            width: 25px;
+            height: 25px;
+            line-height: 25px;
+            text-align: center;
+            border-radius: 5px;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .rank-item:nth-child(1) .rank { background: linear-gradient(135deg, #ffd700, #ff8c00); }
+        .rank-item:nth-child(2) .rank { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); }
+        .rank-item:nth-child(3) .rank { background: linear-gradient(135deg, #cd7f32, #b87333); }
+        .rank-item:nth-child(n+4) .rank { background: rgba(255,255,255,0.1); }
+        .rank-item .name {
+            flex: 1;
+            color: rgba(255,255,255,0.8);
+            font-size: 13px;
+        }
+        .rank-item .value {
+            color: #00d4ff;
+            font-size: 14px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <a href="{% url 'welcome' %}" class="back-btn">← 返回首页</a>
+        <h1>招聘数据可视化分析大屏</h1>
+        <p class="subtitle">RECRUITMENT DATA VISUALIZATION PLATFORM</p>
+        <div class="time" id="currentTime"></div>
+    </div>
+    
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="value" id="totalJobs">0</div>
+            <div class="label">岗位总数</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="avgSalary">0K</div>
+            <div class="label">平均薪资</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="totalCities">0</div>
+            <div class="label">覆盖城市</div>
+        </div>
+        <div class="stat-card">
+            <div class="value" id="totalCompanies">0</div>
+            <div class="label">招聘企业</div>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div class="left-panel">
+            <div class="chart-box">
+                <div class="title">学历要求分布</div>
+                <div class="chart" id="eduChart"></div>
+            </div>
+            <div class="chart-box">
+                <div class="title">经验要求分布</div>
+                <div class="chart" id="expChart"></div>
+            </div>
+            <div class="chart-box">
+                <div class="title">薪资区间分布</div>
+                <div class="chart" id="salaryChart"></div>
+            </div>
+        </div>
+        
+        <div class="center-panel">
+            <div class="chart-box map-box">
+                <div class="title">全国薪资热力分布图</div>
+                <div class="chart" id="mapChart"></div>
+            </div>
+            <div class="chart-box">
+                <div class="title">各类岗位数量对比</div>
+                <div class="chart" id="keywordChart"></div>
+            </div>
+        </div>
+        
+        <div class="right-panel">
+            <div class="chart-box">
+                <div class="title">城市岗位TOP10</div>
+                <div class="rank-list" id="cityRank"></div>
+            </div>
+            <div class="chart-box">
+                <div class="title">公司类型分布</div>
+                <div class="chart" id="companyTypeChart"></div>
+            </div>
+            <div class="chart-box">
+                <div class="title">经验-薪资趋势</div>
+                <div class="chart" id="expSalaryChart"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job-SDF 历史数据行 -->
+    <div class="stats-row" style="margin-top:15px;">
+        <div class="chart-box" style="flex:2; min-height:280px;">
+            <div class="title" style="justify-content:space-between;">
+                <span>📊 Job-SDF 历史技能需求趋势（2021-2023）</span>
+                <span style="font-size:11px;color:rgba(255,255,255,0.4);font-weight:normal;">数据来源：Job-SDF NeurIPS 2024</span>
+            </div>
+            <div class="chart" id="sdfTrendChart" style="height:220px;"></div>
+        </div>
+        <div class="chart-box" style="flex:1; min-height:280px;">
+            <div class="title">🔥 历史热门技能排行</div>
+            <div class="rank-list" id="sdfHotSkills" style="height:220px;overflow-y:auto;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(function(){
+    // 更新时间
+    function updateTime() {
+        var now = new Date();
+        var str = now.getFullYear() + '-' + 
+                  String(now.getMonth()+1).padStart(2,'0') + '-' + 
+                  String(now.getDate()).padStart(2,'0') + ' ' + 
+                  String(now.getHours()).padStart(2,'0') + ':' + 
+                  String(now.getMinutes()).padStart(2,'0') + ':' + 
+                  String(now.getSeconds()).padStart(2,'0');
+        $('#currentTime').text(str);
+    }
+    updateTime();
+    setInterval(updateTime, 1000);
+    
+    // 加载统计数据
+    $.get('{% url "get_city_data" %}', function(res){
+        if(res.code === 0){
+            var total = 0;
+            res.data.forEach(function(item){ total += item.value; });
+            $('#totalJobs').text(total.toLocaleString());
+            $('#totalCities').text(res.data.length);
+            
+            // 城市排名
+            var html = '';
+            res.data.slice(0, 10).forEach(function(item, index){
+                html += '<div class="rank-item"><span class="rank">' + (index+1) + '</span><span class="name">' + item.name + '</span><span class="value">' + item.value + '个</span></div>';
+            });
+            $('#cityRank').html(html);
+            
+            // 估算企业数
+            $('#totalCompanies').text(Math.floor(total * 0.6).toLocaleString());
+        }
+    });
+    
+    $.get('{% url "get_exp_salary_data" %}', function(res){
+        if(res.code === 0 && res.avg_salary) {
+            $('#avgSalary').text(res.avg_salary + 'K');
+        } else {
+            $('#avgSalary').text('--');
+        }
+    });
+    
+    // 学历分布
+    var eduChart = echarts.init(document.getElementById('eduChart'));
+    $.get('{% url "get_edu_data" %}', function(res){
+        if(res.code === 0){
+            eduChart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                series: [{
+                    type: 'pie',
+                    radius: ['45%', '75%'],
+                    center: ['50%', '55%'],
+                    itemStyle: { borderRadius: 6, borderColor: '#0a0e27', borderWidth: 2 },
+                    label: { show: true, color: '#fff', fontSize: 11, formatter: '{b}\n{d}%' },
+                    data: res.data
+                }]
+            });
+        }
+    });
+    
+    // 经验分布
+    var expChart = echarts.init(document.getElementById('expChart'));
+    $.get('{% url "get_experience_data" %}', function(res){
+        if(res.code === 0){
+            expChart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                series: [{
+                    type: 'pie',
+                    radius: ['45%', '75%'],
+                    center: ['50%', '55%'],
+                    itemStyle: { borderRadius: 6, borderColor: '#0a0e27', borderWidth: 2 },
+                    label: { show: true, color: '#fff', fontSize: 11, formatter: '{b}\n{d}%' },
+                    data: res.data
+                }]
+            });
+        }
+    });
+
+    // 薪资分布
+    var salaryChart = echarts.init(document.getElementById('salaryChart'));
+    $.get('{% url "get_salary_data" %}', function(res){
+        if(res.code === 0){
+            var names = res.data.map(function(item){ return item.name; });
+            var values = res.data.map(function(item){ return item.value; });
+            salaryChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: '18%', right: '8%', top: '10%', bottom: '35%' },
+                xAxis: { type: 'category', data: names, axisLabel: { color: '#fff', fontSize: 9, rotate: 45 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                yAxis: { type: 'value', axisLabel: { color: '#fff', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                series: [{
+                    type: 'bar',
+                    data: values,
+                    itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#00d4ff' }, { offset: 1, color: '#7b2ff7' }]), borderRadius: [5, 5, 0, 0] },
+                    barWidth: '50%'
+                }]
+            });
+        }
+    });
+    
+    // 中国地图
+    var mapChart = echarts.init(document.getElementById('mapChart'));
+    $.getJSON('/static/geojson/china.json', function(chinaJson){
+        echarts.registerMap('china', chinaJson);
+        $.get('{% url "get_map_data" %}', function(res){
+            if(res.code === 0){
+                mapChart.setOption({
+                    tooltip: { 
+                        trigger: 'item',
+                        formatter: function(params) {
+                            if(params.data) {
+                                return params.name + '<br/>平均薪资: ' + params.data.value + 'K<br/>岗位数: ' + params.data.count;
+                            }
+                            return params.name + '<br/>暂无数据';
+                        }
+                    },
+                    visualMap: {
+                        min: 0,
+                        max: 40,
+                        left: 'left',
+                        top: 'bottom',
+                        text: ['高', '低'],
+                        textStyle: { color: '#fff' },
+                        inRange: { color: ['#1a237e', '#283593', '#3949ab', '#5c6bc0', '#7986cb', '#9fa8da', '#c5cae9', '#00d4ff', '#00bcd4', '#4dd0e1'] },
+                        calculable: true
+                    },
+                    geo: {
+                        map: 'china',
+                        roam: true,
+                        zoom: 1.2,
+                        label: { show: true, color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+                        itemStyle: { areaColor: '#1a237e', borderColor: '#00d4ff', borderWidth: 1 },
+                        emphasis: { 
+                            label: { color: '#fff' },
+                            itemStyle: { areaColor: '#7b2ff7' }
+                        }
+                    },
+                    series: [{
+                        type: 'map',
+                        map: 'china',
+                        geoIndex: 0,
+                        data: res.data
+                    }]
+                });
+            }
+        });
+    });
+
+    // 岗位数量柱状图
+    var keywordChart = echarts.init(document.getElementById('keywordChart'));
+    $.get('{% url "get_keyword_data" %}', function(res){
+        if(res.code === 0){
+            keywordChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: '8%', right: '5%', top: '15%', bottom: '15%' },
+                xAxis: { type: 'category', data: res.bar_x, axisLabel: { color: '#fff', fontSize: 11 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                yAxis: { type: 'value', axisLabel: { color: '#fff', fontSize: 10 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                series: [{
+                    type: 'bar',
+                    data: res.bar_y,
+                    itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#ff6b6b' }, { offset: 1, color: '#feca57' }]), borderRadius: [5, 5, 0, 0] },
+                    barWidth: '40%'
+                }]
+            });
+        }
+    });
+
+    // 公司类型饼图
+    var companyTypeChart = echarts.init(document.getElementById('companyTypeChart'));
+    $.get('{% url "get_company_type_data" %}', function(res){
+        if(res.code === 0){
+            companyTypeChart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    center: ['50%', '55%'],
+                    itemStyle: { borderRadius: 6, borderColor: '#0a0e27', borderWidth: 2 },
+                    label: { show: true, color: '#fff', fontSize: 10, formatter: '{b}\n{d}%' },
+                    data: res.data
+                }]
+            });
+        }
+    });
+    
+    // 经验-薪资折线图
+    var expSalaryChart = echarts.init(document.getElementById('expSalaryChart'));
+    $.get('{% url "get_exp_salary_data" %}', function(res){
+        if(res.code === 0){
+            var exps = res.data.map(function(item){ return item.exp; });
+            var salaries = res.data.map(function(item){ return item.salary; });
+            expSalaryChart.setOption({
+                tooltip: { trigger: 'axis' },
+                grid: { left: '12%', right: '8%', top: '20%', bottom: '30%' },
+                xAxis: { type: 'category', data: exps, axisLabel: { color: '#fff', fontSize: 9, rotate: 35 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                yAxis: { type: 'value', name: '薪资(K)', nameTextStyle: { color: '#fff', fontSize: 9, padding: [0, 0, 0, 0] }, axisLabel: { color: '#fff', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                series: [{
+                    type: 'line',
+                    data: salaries,
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 8,
+                    areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(0, 212, 255, 0.5)' }, { offset: 1, color: 'rgba(0, 212, 255, 0.05)' }]) },
+                    lineStyle: { color: '#00d4ff', width: 3 },
+                    itemStyle: { color: '#00d4ff', borderColor: '#fff', borderWidth: 2 }
+                }]
+            });
+        }
+    });
+
+    // 窗口大小变化时重绘
+    $(window).resize(function(){
+        eduChart.resize();
+        expChart.resize();
+        salaryChart.resize();
+        mapChart.resize();
+        keywordChart.resize();
+        companyTypeChart.resize();
+        expSalaryChart.resize();
+        if(window._sdfTrendChart) window._sdfTrendChart.resize();
+    });
+
+    // ── Job-SDF 历史技能需求趋势图 ──────────────────────────
+    var sdfTrendChart = echarts.init(document.getElementById('sdfTrendChart'));
+    window._sdfTrendChart = sdfTrendChart;
+    $.get('/analysis/api/sdf/skill-trend/?keywords=Python,Java,前端,算法,运维', function(res){
+        if(res.code === 0){
+            var colors = ['#00d4ff','#ff6b6b','#feca57','#48dbfb','#ff9ff3','#54a0ff'];
+            var series = res.series.map(function(s, i){
+                // 对齐到统一日期轴
+                var dataMap = {};
+                s.dates.forEach(function(d, idx){ dataMap[d] = s.data[idx]; });
+                var aligned = res.dates.map(function(d){ return dataMap[d] !== undefined ? dataMap[d] : null; });
+                return {
+                    name: s.name,
+                    type: 'line',
+                    data: aligned,
+                    smooth: true,
+                    symbol: 'none',
+                    lineStyle: { color: colors[i % colors.length], width: 2 },
+                    itemStyle: { color: colors[i % colors.length] }
+                };
+            });
+            sdfTrendChart.setOption({
+                tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, backgroundColor: 'rgba(10,20,50,0.9)', borderColor: 'rgba(0,212,255,0.3)', textStyle: { color: '#fff', fontSize: 12 } },
+                legend: { data: res.series.map(function(s){ return s.name; }), textStyle: { color: 'rgba(255,255,255,0.7)', fontSize: 11 }, top: 0 },
+                grid: { left: '8%', right: '5%', top: '30px', bottom: '30px' },
+                xAxis: { type: 'category', data: res.dates, axisLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 9, interval: 5 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } }, splitLine: { show: false } },
+                yAxis: { type: 'value', name: '需求指数', nameTextStyle: { color: 'rgba(255,255,255,0.5)', fontSize: 9 }, axisLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } } },
+                series: series
+            });
+        } else {
+            $('#sdfTrendChart').html('<div style="color:rgba(255,255,255,0.4);text-align:center;padding-top:80px;font-size:13px;">暂无Job-SDF历史数据<br><small>请确认benchmark/dataset目录存在</small></div>');
+        }
+    });
+
+    // ── Job-SDF 热门技能排行 ──────────────────────────────
+    $.get('/analysis/api/sdf/hot-skills/', function(res){
+        if(res.code === 0){
+            var html = '';
+            res.data.slice(0, 10).forEach(function(item, index){
+                var growthColor = item.growth > 0 ? '#52c41a' : (item.growth < 0 ? '#ff4d4f' : '#aaa');
+                var growthIcon = item.growth > 0 ? '↑' : (item.growth < 0 ? '↓' : '→');
+                html += '<div class="rank-item">' +
+                    '<span class="rank">' + (index+1) + '</span>' +
+                    '<span class="name">' + item.name + '</span>' +
+                    '<span style="color:' + growthColor + ';font-size:12px;margin-right:6px;">' + growthIcon + Math.abs(item.growth) + '%</span>' +
+                    '</div>';
+            });
+            $('#sdfHotSkills').html(html);
+        } else {
+            $('#sdfHotSkills').html('<div style="color:rgba(255,255,255,0.4);text-align:center;padding-top:60px;font-size:13px;">暂无数据</div>');
+        }
+    });
+});
+</script>
+</body>
+</html>

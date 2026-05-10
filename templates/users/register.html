@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>注册 — 招聘数据分析系统</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background: #f5f5f7;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+            padding: 24px;
+        }
+        .container { width: 100%; max-width: 400px; }
+        .brand { text-align: center; margin-bottom: 28px; }
+        .brand-icon {
+            width: 56px; height: 56px;
+            background: #1d1d1f;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+        .brand-icon svg { width: 26px; height: 26px; fill: #fff; }
+        .brand h1 {
+            font-family: -apple-system, "SF Pro Display", sans-serif;
+            font-size: 22px; font-weight: 600;
+            color: #1d1d1f; letter-spacing: -0.5px;
+        }
+        .brand p { font-size: 14px; color: rgba(0,0,0,0.48); margin-top: 5px; letter-spacing: -0.224px; }
+        .card {
+            background: #fff;
+            border-radius: 18px;
+            padding: 28px 32px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 8px 32px rgba(0,0,0,0.06);
+            animation: cardIn 0.45s cubic-bezier(0.25,0.46,0.45,0.94) both;
+        }
+        @keyframes cardIn {
+            from { opacity:0; transform:translateY(20px) scale(0.98); }
+            to   { opacity:1; transform:translateY(0) scale(1); }
+        }
+        .form-group { margin-bottom: 14px; }
+        .form-group label {
+            display: block; font-size: 13px; font-weight: 500;
+            color: #1d1d1f; margin-bottom: 5px; letter-spacing: -0.12px;
+        }
+        .form-group input {
+            width: 100%; height: 42px;
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 10px; padding: 0 13px;
+            font-size: 15px; font-family: inherit;
+            color: #1d1d1f; background: #fff;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            letter-spacing: -0.224px; outline: none;
+        }
+        .form-group input:focus {
+            border-color: #0071e3;
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.15);
+        }
+        .form-group input::placeholder { color: rgba(0,0,0,0.3); }
+        .btn-register {
+            width: 100%; height: 44px;
+            background: #1d1d1f; color: #fff;
+            border: none; border-radius: 10px;
+            font-size: 15px; font-family: inherit; font-weight: 500;
+            letter-spacing: -0.224px; cursor: pointer; margin-top: 6px;
+            transition: background 0.15s;
+        }
+        .btn-register:hover { background: #2d2d2f; }
+        .btn-register:active { background: #000; }
+        .divider { height: 1px; background: rgba(0,0,0,0.06); margin: 18px 0; }
+        .links { text-align: center; font-size: 13px; color: rgba(0,0,0,0.48); }
+        .links a { color: #0066cc; text-decoration: none; letter-spacing: -0.224px; }
+        .links a:hover { text-decoration: underline; }
+        .error-msg {
+            background: rgba(255,59,48,0.08); color: #c0392b;
+            border-radius: 8px; padding: 10px 14px;
+            font-size: 13px; margin-bottom: 14px; display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="brand">
+        <div class="brand-icon">
+            <svg viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        </div>
+        <h1>创建账号</h1>
+        <p>加入招聘数据分析平台</p>
+    </div>
+    <div class="card">
+        <div class="error-msg" id="errorMsg"></div>
+        <form id="registerForm">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>账号</label>
+                <input type="text" name="user" placeholder="设置登录账号" required>
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" name="user_name" placeholder="你的显示名称" required>
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" name="password" placeholder="至少6位" required>
+            </div>
+            <div class="form-group">
+                <label>确认密码</label>
+                <input type="password" name="password2" placeholder="再次输入密码" required>
+            </div>
+            <button type="submit" class="btn-register" id="regBtn">创建账号</button>
+        </form>
+        <div class="divider"></div>
+        <div class="links">已有账号？<a href="{% url 'login' %}">登录</a></div>
+    </div>
+</div>
+
+<script src="/static/vendor/jquery/jquery.min.js"></script>
+<script>
+$(function(){
+    $('#registerForm').submit(function(e){
+        e.preventDefault();
+        var $btn = $('#regBtn').text('创建中...').prop('disabled', true);
+        $.ajax({
+            url: '{% url "register" %}',
+            type: 'POST',
+            data: $(this).serialize(),
+            success: function(res){
+                if(res.code === 0){
+                    window.location.href = '{% url "welcome" %}';
+                } else {
+                    $('#errorMsg').text(res.msg).show();
+                    $btn.text('创建账号').prop('disabled', false);
+                }
+            },
+            error: function(){
+                $('#errorMsg').text('网络错误，请重试').show();
+                $btn.text('创建账号').prop('disabled', false);
+            }
+        });
+    });
+    $('input').on('input', function(){ $('#errorMsg').hide(); });
+});
+</script>
+</body>
+</html>

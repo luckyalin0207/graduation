@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{% block title %}招聘数据可视化分析平台{% endblock %}</title>
+
+    <!-- Custom fonts -->
+    <link href="/static/vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
+    <link href="/static/css/nunito.css" rel="stylesheet">
+
+    <!-- Custom styles -->
+    <link href="/static/css/sb-admin-2.min.css" rel="stylesheet">
+    <!-- Apple Design Theme -->
+    <link href="/static/css/apple-theme.css" rel="stylesheet">
+    <!-- Apple Animations -->
+    <link href="/static/css/apple-animations.css" rel="stylesheet">
+    
+    <!-- ECharts -->
+    <script src="/static/js/echarts.min.js"></script>
+    
+    {% block extra_css %}{% endblock %}
+    <style>
+        .collapse-item::before {
+            content: "•";
+            margin-right: 8px;
+            color: #4e73df;
+        }
+        
+        /* 全局优化：修复所有下拉框文字被折叠的问题 */
+        select.form-control,
+        .form-control select {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            height: auto !important;
+            min-height: 38px !important;
+            padding: 8px 30px 8px 12px !important;
+            line-height: 1.5 !important;
+        }
+        
+        /* 优化下拉选项显示 */
+        select.form-control option,
+        .form-control select option {
+            white-space: normal !important;
+            overflow: visible !important;
+            padding: 8px !important;
+            line-height: 1.5 !important;
+            word-wrap: break-word !important;
+        }
+        
+        /* 优化小尺寸下拉框 */
+        select.form-control-sm {
+            min-height: 32px !important;
+            padding: 6px 28px 6px 10px !important;
+        }
+        
+        /* 优化大尺寸下拉框 */
+        select.form-control-lg {
+            min-height: 48px !important;
+            padding: 10px 35px 10px 15px !important;
+        }
+        
+        /* 确保下拉箭头不被遮挡 */
+        select.form-control {
+            background-position: right 8px center !important;
+            background-size: 12px !important;
+        }
+        
+        /* 优化输入框和文本域 */
+        input.form-control,
+        textarea.form-control {
+            white-space: normal !important;
+        }
+        
+        /* 优化表格中的下拉框 */
+        table select.form-control {
+            min-width: 120px;
+        }
+        
+        /* 优化筛选器中的下拉框 */
+        .filter-card select.form-control,
+        .card-body select.form-control {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body id="page-top">
+    <!-- Page Wrapper -->
+    <div id="wrapper">
+
+        <!-- Sidebar -->
+        <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
+
+            <!-- Sidebar - Brand -->
+            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{% url 'welcome' %}">
+                <div class="sidebar-brand-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="sidebar-brand-text mx-2">招聘数据分析平台</div>
+            </a>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider my-0">
+
+            <!-- Nav Item - 首页 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'welcome' %}">
+                    <i class="fas fa-fw fa-tachometer-alt"></i>
+                    <span>首页概览</span>
+                </a>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">岗位分析</div>
+
+            <!-- Nav Item - 岗位分析 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'job_analysis' %}">
+                    <i class="fas fa-fw fa-chart-bar"></i>
+                    <span>岗位分析</span>
+                </a>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">可视化</div>
+
+            <!-- Nav Item - 可视化大屏 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'dashboard' %}">
+                    <i class="fas fa-fw fa-chart-area"></i>
+                    <span>可视化大屏</span>
+                </a>
+            </li>
+
+            <!-- Nav Item - 薪资热力图 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'salary_map' %}">
+                    <i class="fas fa-fw fa-map-marked-alt"></i>
+                    <span>薪资热力图</span>
+                </a>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">智能分析</div>
+
+            <!-- Nav Item - 分析工具 -->
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseAnalysis"
+                    aria-expanded="true" aria-controls="collapseAnalysis">
+                    <i class="fas fa-fw fa-brain"></i>
+                    <span>分析工具</span>
+                </a>
+                <div id="collapseAnalysis" class="collapse" aria-labelledby="headingAnalysis" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <h6 class="collapse-header">智能分析:</h6>
+                        <a class="collapse-item" href="{% url 'salary_predict' %}">薪资推测</a>
+                        <a class="collapse-item" href="{% url 'job_match' %}">岗位匹配</a>
+                        <a class="collapse-item" href="{% url 'job_trend_predict' %}">趋势预测</a>
+                    </div>
+                </div>
+            </li>
+
+            <!-- Nav Item - 智能求职助手 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'agent_dashboard' %}">
+                    <i class="fas fa-fw fa-robot"></i>
+                    <span>智能推荐</span>
+                </a>
+            </li>
+
+            <!-- Nav Item - AI 对话助手 -->
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'agent_chat' %}">
+                    <i class="fas fa-fw fa-comments"></i>
+                    <span>AI 对话助手</span>
+                </a>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">求职服务</div>
+
+            <!-- Nav Item - 职位管理 -->
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseJobs"
+                    aria-expanded="true" aria-controls="collapseJobs">
+                    <i class="fas fa-fw fa-briefcase"></i>
+                    <span>职位管理</span>
+                </a>
+                <div id="collapseJobs" class="collapse" aria-labelledby="headingJobs" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item" href="{% url 'job_list' %}">职位列表</a>
+                        <a class="collapse-item" href="{% url 'kanban' %}">求职看板</a>
+                        <a class="collapse-item" href="{% url 'my_send_list' %}">我的投递</a>
+                        <a class="collapse-item" href="{% url 'my_favorite_list' %}">我的收藏</a>
+                        <a class="collapse-item" href="{% url 'job_expect' %}">求职意向</a>
+                        <a class="collapse-item" href="{% url 'recommend' %}">智能推荐</a>
+                    </div>
+                </div>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">企业服务</div>
+
+            <!-- Nav Item - 企业信息验证 -->
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseCompany"
+                    aria-expanded="true" aria-controls="collapseCompany">
+                    <i class="fas fa-fw fa-building"></i>
+                    <span>企业信息验证</span>
+                </a>
+                <div id="collapseCompany" class="collapse" aria-labelledby="headingCompany" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item" href="{% url 'company_verify' %}">验证企业</a>
+                        <a class="collapse-item" href="{% url 'company_list' %}">已验证列表</a>
+                    </div>
+                </div>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">系统</div>
+
+            <!-- Nav Item - 系统管理 -->
+            <li class="nav-item">
+                <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#collapseSystem"
+                    aria-expanded="true" aria-controls="collapseSystem">
+                    <i class="fas fa-fw fa-cog"></i>
+                    <span>系统管理</span>
+                </a>
+                <div id="collapseSystem" class="collapse" aria-labelledby="headingSystem" data-parent="#accordionSidebar">
+                    <div class="bg-white py-2 collapse-inner rounded">
+                        <a class="collapse-item" href="{% url 'spider_manage' %}">爬虫管理</a>
+                        <a class="collapse-item" href="/admin/" target="_blank">后台管理</a>
+                    </div>
+                </div>
+            </li>
+
+            <!-- Divider -->
+            <hr class="sidebar-divider d-none d-md-block">
+
+            <!-- Sidebar Toggler -->
+            <div class="text-center d-none d-md-inline">
+                <button class="rounded-circle border-0" id="sidebarToggle"></button>
+            </div>
+
+        </ul>
+        <!-- End of Sidebar -->
+
+        <!-- Content Wrapper -->
+        <div id="content-wrapper" class="d-flex flex-column">
+
+            <!-- Main Content -->
+            <div id="content">
+
+                <!-- Topbar -->
+                <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
+
+                    <!-- Sidebar Toggle (Topbar) -->
+                    <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
+                        <i class="fa fa-bars"></i>
+                    </button>
+
+                    <!-- Topbar Navbar -->
+                    <ul class="navbar-nav ml-auto">
+
+                        <!-- Nav Item - User Information -->
+                        <li class="nav-item dropdown no-arrow">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
+                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                <span class="mr-2 d-none d-lg-inline text-gray-600 small">{{ request.session.user_name|default:"用户" }}</span>
+                                <img class="img-profile rounded-circle" src="/static/img/undraw_profile.svg">
+                            </a>
+                            <!-- Dropdown - User Information -->
+                            <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in"
+                                aria-labelledby="userDropdown">
+                                <a class="dropdown-item" href="{% url 'user_info' %}">
+                                    <i class="fas fa-user fa-sm fa-fw mr-2 text-gray-400"></i>
+                                    个人信息
+                                </a>
+                                <a class="dropdown-item" href="{% url 'job_expect' %}">
+                                    <i class="fas fa-cogs fa-sm fa-fw mr-2 text-gray-400"></i>
+                                    求职意向
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item" href="{% url 'logout' %}">
+                                    <i class="fas fa-sign-out-alt fa-sm fa-fw mr-2 text-gray-400"></i>
+                                    退出登录
+                                </a>
+                            </div>
+                        </li>
+
+                    </ul>
+
+                </nav>
+                <!-- End of Topbar -->
+
+                <!-- Begin Page Content -->
+                <div class="container-fluid">
+                    {% block content %}{% endblock %}
+                </div>
+                <!-- /.container-fluid -->
+
+            </div>
+            <!-- End of Main Content -->
+
+            <!-- Footer -->
+            <footer class="sticky-footer bg-white">
+                <div class="container my-auto">
+                    <div class="copyright text-center my-auto">
+                        <span>Copyright &copy; 招聘数据可视化分析平台 2025</span>
+                    </div>
+                </div>
+            </footer>
+            <!-- End of Footer -->
+
+        </div>
+        <!-- End of Content Wrapper -->
+
+    </div>
+    <!-- End of Page Wrapper -->
+
+    <!-- Scroll to Top Button-->
+    <a class="scroll-to-top rounded" href="#page-top">
+        <i class="fas fa-angle-up"></i>
+    </a>
+
+    <!-- Bootstrap core JavaScript-->
+    <script src="/static/vendor/jquery/jquery.min.js"></script>
+    <script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Core plugin JavaScript-->
+    <script src="/static/vendor/jquery-easing/jquery.easing.min.js"></script>
+
+    <!-- Custom scripts -->
+    <script src="/static/js/sb-admin-2.min.js"></script>
+
+    {% block extra_js %}{% endblock %}
+
+    <script>
+    // ── 清除残留的 modal backdrop（防止灰色遮罩） ──────────────────────────────────────────
+    $(document).ready(function() {
+        // 页面加载时清除所有残留的 backdrop
+        $('.modal-backdrop').remove();
+        $('body').removeClass('modal-open');
+        $('body').css('padding-right', '');
+        
+        // 监听所有模态框的关闭事件
+        $(document).on('hidden.bs.modal', '.modal', function() {
+            $('.modal-backdrop').remove();
+            $('body').removeClass('modal-open');
+            $('body').css('padding-right', '');
+        });
+        
+        // 定期检查并清理（每5秒）
+        setInterval(function() {
+            if ($('.modal:visible').length === 0) {
+                $('.modal-backdrop').remove();
+                $('body').removeClass('modal-open');
+                $('body').css('padding-right', '');
+            }
+        }, 5000);
+    });
+    
+    // ── 数字计数动画 ──────────────────────────────────────────
+    function animateCount(el, target, duration) {
+        var start = 0;
+        var step = target / (duration / 16);
+        var timer = setInterval(function() {
+            start += step;
+            if (start >= target) { start = target; clearInterval(timer); }
+            el.textContent = Math.floor(start).toLocaleString();
+        }, 16);
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        // 首页统计数字动画
+        document.querySelectorAll('.h5.font-weight-bold').forEach(function(el) {
+            var raw = el.textContent.trim().replace(/,/g, '');
+            var num = parseFloat(raw);
+            if (!isNaN(num) && num > 0) {
+                el.textContent = '0';
+                setTimeout(function() { animateCount(el, num, 800); }, 200);
+            }
+        });
+
+        // 滚动触发淡入
+        var reveals = document.querySelectorAll('.scroll-reveal');
+        if (reveals.length) {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1 });
+            reveals.forEach(function(el) { observer.observe(el); });
+        }
+
+        // 侧边栏当前页高亮
+        var path = window.location.pathname;
+        document.querySelectorAll('.sidebar .nav-link').forEach(function(link) {
+            if (link.getAttribute('href') === path) {
+                link.closest('.nav-item').classList.add('active');
+                link.style.color = '#0071e3';
+                link.style.background = 'rgba(0,113,227,0.08)';
+                link.querySelectorAll('i').forEach(function(i) { i.style.color = '#0071e3'; });
+            }
+        });
+    });
+
+    // ── 页面切换淡出 ──────────────────────────────────────────
+    document.querySelectorAll('a[href]').forEach(function(a) {
+        var href = a.getAttribute('href');
+        if (href && !href.startsWith('#') && !href.startsWith('javascript') &&
+            !href.startsWith('http') && !a.target) {
+            a.addEventListener('click', function(e) {
+                var content = document.querySelector('.container-fluid');
+                if (content) {
+                    content.style.transition = 'opacity 0.15s ease';
+                    content.style.opacity = '0';
+                }
+            });
+        }
+    });
+    </script>
+</body>
+</html>

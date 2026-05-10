@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block title %}求职进度看板 - 招聘数据分析系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.kanban-wrap { display:flex; gap:16px; overflow-x:auto; padding-bottom:16px; min-height:500px; }
+.kanban-col { min-width:230px; width:230px; flex-shrink:0; }
+.kanban-col-header {
+    padding:12px 16px;
+    border-radius:var(--r-lg) var(--r-lg) 0 0;
+    font-weight:600;
+    font-size:13px;
+    font-family:var(--apple-font-display);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    letter-spacing:-0.2px;
+}
+.kanban-col-body {
+    background:var(--apple-gray-bg);
+    border-radius:0 0 var(--r-lg) var(--r-lg);
+    min-height:400px;
+    padding:8px;
+    border:1px solid rgba(0,0,0,0.06);
+    border-top:none;
+}
+.kanban-card {
+    background:var(--apple-white);
+    border-radius:var(--r-md);
+    padding:12px 14px;
+    margin-bottom:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.07), 0 2px 8px rgba(0,0,0,0.05);
+    cursor:grab;
+    transition:box-shadow .2s, transform .2s;
+    border-left:3px solid rgba(0,0,0,0.1);
+}
+.kanban-card:hover { box-shadow:0 4px 16px rgba(0,0,0,0.12); transform:translateY(-2px); }
+.kanban-card.dragging { opacity:.5; transform:rotate(1.5deg); }
+.kanban-col-body.drag-over { background:rgba(0,113,227,0.06); border-color:var(--apple-blue); }
+.card-title { font-size:13px; font-weight:600; color:var(--apple-near-black); margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card-company { font-size:12px; color:var(--apple-text-muted); margin-bottom:3px; }
+.card-salary { font-size:12px; color:#ff3b30; font-weight:500; }
+.card-meta { font-size:11px; color:var(--apple-text-muted); margin-top:6px; display:flex; justify-content:space-between; }
+.col-count { background:rgba(255,255,255,0.35); border-radius:var(--r-pill); padding:1px 8px; font-size:12px; }
+.empty-col { text-align:center; color:var(--apple-text-muted); font-size:12px; padding:30px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h5 class="mb-0 font-weight-bold text-primary">
+        <i class="fas fa-columns mr-2"></i>求职进度看板
+    </h5>
+    <div>
+        <a href="{% url 'my_send_list' %}" class="btn btn-sm btn-outline-secondary mr-2">
+            <i class="fas fa-list mr-1"></i>列表视图
+        </a>
+        <a href="{% url 'job_list' %}" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-plus mr-1"></i>投递新职位
+        </a>
+    </div>
+</div>
+
+<div class="kanban-wrap" id="kanbanWrap">
+    <div class="text-center w-100 py-5 text-muted">
+        <i class="fas fa-spinner fa-spin fa-2x"></i>
+        <p class="mt-2">加载中...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function(){
+    var STATUS_COLORS = {0:'primary', 1:'info', 2:'warning', 4:'success', 3:'secondary'};
+    var dragSendId = null;
+
+    function loadKanban() {
+        console.log('开始加载看板数据...');
+        console.log('API URL:', '{% url "get_kanban_data" %}');
+        
+        $.get('{% url "get_kanban_data" %}', function(res) {
+            console.log('看板数据返回:', res);
+            console.log('返回码:', res.code);
+            console.log('数据:', res.data);
+            
+            if (res.code !== 0) {
+                console.error('加载失败:', res.msg);
+                $('#kanbanWrap').html(
+                    '<div class="alert alert-danger">' +
+                    '<i class="fas fa-exclamation-triangle mr-2"></i>' +
+                    '加载失败: ' + (res.msg || '未知错误') + 
+                    '</div>'
+                );
+                return;
+            }
+            
+            var $wrap = $('#kanbanWrap').empty();
+
+            if (!res.data || res.data.length === 0) {
+                console.warn('没有看板数据');
+                $wrap.html(
+                    '<div class="alert alert-info">' +
+                    '<i class="fas fa-info-circle mr-2"></i>' +
+                    '暂无投递记录，请先<a href="{% url "job_list" %}" class="alert-link">投递职位</a>' +
+                    '</div>'
+                );
+                return;
+            }
+
+            console.log('开始渲染', res.data.length, '列');
+            var totalCards = 0;
+            
+            res.data.forEach(function(col) {
+                console.log('渲染列:', col.label, '卡片数:', col.cards.length);
+                totalCards += col.cards.length;
+                
+                var $col = $('<div class="kanban-col">');
+                var $header = $('<div class="kanban-col-header bg-' + col.color + ' text-white">');
+                $header.append(
+                    $('<span>').text(col.label),
+                    $('<span class="col-count">').text(col.cards.length)
+                );
+                var $body = $('<div class="kanban-col-body" data-status="' + col.status + '">');
+
+                if (col.cards.length === 0) {
+                    $body.append('<div class="empty-col">暂无职位</div>');
+                } else {
+                    col.cards.forEach(function(card) {
+                        console.log('  - 卡片:', card.name);
+                        $body.append(makeCard(card, col.color));
+                    });
+                }
+
+                // 拖拽放置
+                $body[0].addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    $(this).addClass('drag-over');
+                });
+                $body[0].addEventListener('dragleave', function() {
+                    $(this).removeClass('drag-over');
+                });
+                $body[0].addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    $(this).removeClass('drag-over');
+                    var newStatus = parseInt($(this).data('status'));
+                    if (dragSendId !== null) {
+                        moveCard(dragSendId, newStatus);
+                    }
+                });
+
+                $col.append($header, $body);
+                $wrap.append($col);
+            });
+            
+            console.log('渲染完成，总卡片数:', totalCards);
+        }).fail(function(xhr, status, error) {
+            console.error('请求失败:', status, error);
+            console.error('响应:', xhr.responseText);
+            $('#kanbanWrap').html(
+                '<div class="alert alert-danger">' +
+                '<i class="fas fa-exclamation-triangle mr-2"></i>' +
+                '网络错误: ' + error + 
+                '<br><small>状态: ' + status + '</small>' +
+                '</div>'
+            );
+        });
+    }
+
+    function makeCard(card, color) {
+        var $card = $('<div class="kanban-card" draggable="true" data-send-id="' + card.send_id + '">');
+        $card.css('border-left-color', getColor(color));
+        $card.append(
+            $('<div class="card-title" title="' + card.name + '">').text(card.name),
+            $('<div class="card-company">').html('<i class="fas fa-building fa-xs mr-1"></i>' + card.company),
+            $('<div class="card-salary">').text(card.salary),
+            $('<div class="card-meta">').append(
+                $('<span>').html('<i class="fas fa-map-marker-alt fa-xs mr-1"></i>' + (card.city || '—')),
+                $('<span>').text(card.created_at)
+            )
+        );
+
+        $card[0].addEventListener('dragstart', function() {
+            dragSendId = card.send_id;
+            $(this).addClass('dragging');
+        });
+        $card[0].addEventListener('dragend', function() {
+            $(this).removeClass('dragging');
+            dragSendId = null;
+        });
+
+        return $card;
+    }
+
+    function moveCard(sendId, newStatus) {
+        $.ajax({
+            url: '{% url "move_kanban_card" %}',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({send_id: sendId, status: newStatus}),
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            success: function(res) {
+                if (res.code === 0) loadKanban();
+                else alert(res.msg);
+            }
+        });
+    }
+
+    function getColor(name) {
+        var map = {primary:'#4e73df', info:'#36b9cc', warning:'#f6c23e', success:'#1cc88a', secondary:'#858796'};
+        return map[name] || '#dee2e6';
+    }
+
+    loadKanban();
+});
+</script>
+{% endblock %}

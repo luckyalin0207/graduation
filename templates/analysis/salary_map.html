@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+
+{% block title %}薪资热力图 - 招聘数据可视化分析平台{% endblock %}
+
+{% block content %}
+<div class="d-sm-flex align-items-center justify-content-between mb-4">
+    <h1 class="h3 mb-0 text-gray-800">薪资热力图</h1>
+</div>
+
+<div class="row">
+    <div class="col-xl-8 col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">全国城市平均薪资分布</h6>
+            </div>
+            <div class="card-body">
+                <div id="mapChart" style="height: 500px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-4 col-lg-5">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">筛选条件</h6>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="font-weight-bold">岗位类型</label>
+                    <select class="form-control" id="jobType">
+                        <option value="">全部</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="前端">Web前端</option>
+                        <option value="算法">算法</option>
+                        <option value="数据">数据分析</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="loadData()">
+                    <i class="fas fa-search"></i> 查询
+                </button>
+            </div>
+        </div>
+        
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">城市薪资排行</h6>
+            </div>
+            <div class="card-body" style="max-height: 350px; overflow-y: auto;">
+                <table class="table table-bordered" id="rankTable">
+                    <thead>
+                        <tr><th>排名</th><th>城市</th><th>平均薪资</th><th>岗位数</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Job-SDF 历史热门技能 -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">🔥 Job-SDF 历史热门技能</h6>
+                <small class="text-muted">2021-2023</small>
+            </div>
+            <div class="card-body p-0">
+                <div id="sdfHotSkillsMap" style="padding:12px;max-height:280px;overflow-y:auto;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Job-SDF 多技能需求趋势对比 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">📊 Job-SDF 历史技能需求趋势对比（2021-2023）</h6>
+                <small class="text-muted">数据来源：Job-SDF NeurIPS 2024 · 纵轴为需求相对指数（首月=100）</small>
+            </div>
+            <div class="card-body">
+                <div id="sdfMultiTrendChart" style="height:300px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadData() {
+    var jobType = $('#jobType').val();
+    $.get('{% url "get_salary_map_data" %}?type=' + jobType, function(res) {
+        if(res.code === 0) {
+            renderChart(res.data);
+            renderTable(res.data);
+        }
+    });
+}
+
+function renderChart(data) {
+    var chart = echarts.init(document.getElementById('mapChart'));
+    var names = data.slice(0, 15).map(function(item) { return item.name; });
+    var values = data.slice(0, 15).map(function(item) { return item.value; });
+    
+    chart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: { type: 'value', name: '平均薪资(K)' },
+        yAxis: { type: 'category', data: names.reverse() },
+        series: [{
+            name: '平均薪资',
+            type: 'bar',
+            data: values.reverse(),
+            itemStyle: {
+                color: function(params) {
+                    var colors = ['#c23531', '#2f4554', '#61a0a8', '#d48265', '#91c7ae', '#749f83', '#ca8622', '#bda29a', '#6e7074', '#546570', '#c4ccd3', '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e'];
+                    return colors[params.dataIndex % colors.length];
+                }
+            },
+            label: { show: true, position: 'right', formatter: '{c}K' }
+        }]
+    });
+}
+
+function renderTable(data) {
+    var html = '';
+    data.slice(0, 20).forEach(function(item, index) {
+        html += '<tr><td>' + (index + 1) + '</td><td>' + item.name + '</td><td>' + item.value + 'K</td><td>' + item.count + '</td></tr>';
+    });
+    $('#rankTable tbody').html(html);
+}
+
+$(function() {
+    loadData();
+
+    // ── Job-SDF 热门技能排行 ──────────────────────────────
+    $.get('/analysis/api/sdf/hot-skills/', function(res){
+        if(res.code === 0 && res.data){
+            var html = '';
+            res.data.slice(0, 10).forEach(function(item, i){
+                var pct = Math.min(100, Math.round(item.total / res.data[0].total * 100));
+                var growthColor = item.growth > 0 ? '#1cc88a' : (item.growth < 0 ? '#e74a3b' : '#858796');
+                var growthText = item.growth > 0 ? '↑' + item.growth + '%' : (item.growth < 0 ? '↓' + Math.abs(item.growth) + '%' : '→');
+                html += '<div style="margin-bottom:10px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">' +
+                    '<span><b>' + (i+1) + '.</b> ' + item.name + '</span>' +
+                    '<span style="color:' + growthColor + ';font-size:12px;">' + growthText + '</span>' +
+                    '</div>' +
+                    '<div style="background:#eee;border-radius:4px;height:7px;">' +
+                    '<div style="background:linear-gradient(90deg,#4e73df,#36b9cc);width:' + pct + '%;height:7px;border-radius:4px;"></div>' +
+                    '</div></div>';
+            });
+            $('#sdfHotSkillsMap').html(html);
+        } else {
+            $('#sdfHotSkillsMap').html('<div class="text-center text-muted py-3"><small>暂无Job-SDF数据</small></div>');
+        }
+    });
+
+    // ── Job-SDF 多技能趋势对比 ────────────────────────────
+    $.get('/analysis/api/sdf/skill-trend/?keywords=Python,Java,前端,算法,大数据', function(res){
+        if(res.code === 0 && res.series){
+            var colors = ['#4e73df','#e74a3b','#f6c23e','#1cc88a','#36b9cc'];
+            var series = res.series.map(function(s, i){
+                var dataMap = {};
+                s.dates.forEach(function(d, idx){ dataMap[d] = s.data[idx]; });
+                var aligned = res.dates.map(function(d){ return dataMap[d] !== undefined ? dataMap[d] : null; });
+                return {
+                    name: s.name, type: 'line', data: aligned, smooth: true, symbol: 'none',
+                    lineStyle: { color: colors[i % colors.length], width: 2 },
+                    itemStyle: { color: colors[i % colors.length] }
+                };
+            });
+            var chart = echarts.init(document.getElementById('sdfMultiTrendChart'));
+            chart.setOption({
+                tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+                legend: { data: res.series.map(function(s){ return s.name; }), top: 0 },
+                grid: { left: '6%', right: '4%', top: '40px', bottom: '12%' },
+                xAxis: { type: 'category', data: res.dates, axisLabel: { fontSize: 10, interval: 5, rotate: 30 } },
+                yAxis: { type: 'value', name: '需求指数', nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { type: 'dashed' } } },
+                series: series
+            });
+        }
+    });
+});
+</script>
+{% endblock %}
