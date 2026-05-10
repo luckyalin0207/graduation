@@ -1,88 +1,35 @@
 """
-Django管理命令：导入Job-SDF数据集
+[LEGACY] Django 管理命令:导入 Job-SDF 数据集。
+
+本项目已切换到拉勾网招聘数据集,请改用:
+    python manage.py import_lagou
+
+本命令仅为兼容旧仓库而保留,默认直接报错并给出迁移提示。
+如仍需使用 Job-SDF,请加 --force 参数。
 """
-from django.core.management.base import BaseCommand
-from analysis.import_job_sdf import run_import
+from django.core.management.base import BaseCommand, CommandError
 
 
 class Command(BaseCommand):
-    help = '导入Job-SDF数据集到数据库'
-    
+    help = '[LEGACY] 旧的 Job-SDF 导入命令,已被 import_lagou 取代'
+
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--path',
-            type=str,
-            required=True,
-            help='Job-SDF数据集路径（benchmark/dataset目录）'
-        )
-        parser.add_argument(
-            '--granularity',
-            type=str,
-            default='l2',
-            choices=['l1', 'l2', 'company', 'region'],
-            help='数据粒度级别（默认: l2）'
-        )
-        parser.add_argument(
-            '--limit',
-            type=int,
-            default=None,
-            help='限制导入的技能数量（用于测试，默认: 全部导入）'
-        )
-    
+        parser.add_argument('--path', type=str, default='')
+        parser.add_argument('--granularity', type=str, default='l2',
+                            choices=['l1', 'l2', 'company', 'region'])
+        parser.add_argument('--limit', type=int, default=None)
+        parser.add_argument('--force', action='store_true',
+                            help='强制执行旧的 Job-SDF 导入(不推荐)')
+
     def handle(self, *args, **options):
-        dataset_path = options['path']
-        granularity = options['granularity']
-        limit_skills = options['limit']
-        
-        self.stdout.write(self.style.SUCCESS(
-            '=' * 60
-        ))
-        self.stdout.write(self.style.SUCCESS(
-            '开始导入Job-SDF数据集'
-        ))
-        self.stdout.write(self.style.SUCCESS(
-            '=' * 60
-        ))
-        self.stdout.write(f'数据集路径: {dataset_path}')
-        self.stdout.write(f'数据粒度: {granularity}')
-        if limit_skills:
-            self.stdout.write(f'技能数量限制: {limit_skills}')
-        self.stdout.write('')
-        
+        if not options.get('force'):
+            raise CommandError(
+                '本项目已切换到拉勾网招聘数据集,请改用:\n'
+                '    python manage.py import_lagou --with-trend --with-cooc\n\n'
+                '如仍需使用 Job-SDF,请加 --force 参数。'
+            )
         try:
-            run_import(dataset_path, granularity, limit_skills)
-            
-            self.stdout.write('')
-            self.stdout.write(self.style.SUCCESS(
-                '=' * 60
-            ))
-            self.stdout.write(self.style.SUCCESS(
-                '✅ 数据导入成功！'
-            ))
-            self.stdout.write(self.style.SUCCESS(
-                '=' * 60
-            ))
-            
-            # 显示统计信息
-            from analysis.models import HistoricalJobData, SkillMapping, SkillCooccurrence
-            
-            self.stdout.write('')
-            self.stdout.write('数据统计:')
-            self.stdout.write(f'  - 技能映射: {SkillMapping.objects.count()} 条')
-            self.stdout.write(f'  - 历史数据: {HistoricalJobData.objects.count()} 条')
-            self.stdout.write(f'  - 共现关系: {SkillCooccurrence.objects.count()} 条')
-            
-        except Exception as e:
-            self.stdout.write('')
-            self.stdout.write(self.style.ERROR(
-                '=' * 60
-            ))
-            self.stdout.write(self.style.ERROR(
-                f'❌ 导入失败: {str(e)}'
-            ))
-            self.stdout.write(self.style.ERROR(
-                '=' * 60
-            ))
-            
-            import traceback
-            self.stdout.write(traceback.format_exc())
+            from analysis.import_job_sdf import run_import
+        except Exception as exc:
+            raise CommandError(f'Job-SDF 旧逻辑已迁移,加载失败: {exc}')
+        run_import(options['path'], options['granularity'], options['limit'])

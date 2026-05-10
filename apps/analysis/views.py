@@ -816,197 +816,148 @@ def job_trend_predict(request):
 
 def get_sdf_skill_trend(request):
     """
-    Job-SDF 历史技能需求趋势 API
-    支持多关键词对比，直接读取 parquet 文件
-    返回 2021-2023 月度需求相对指数
+    历史技能需求趋势 API (路径沿用旧命名 /api/sdf/skill-trend/)
+    数据源: 拉勾网数据集 (HistoricalJobData.data_source='Lagou') + 实时爬取的 JobData
+    返回指定关键词的按日需求相对指数 (首日=100)
     """
-    from .job_trend_analyzer import KEYWORD_SKILL_GROUPS, DATASET_PATH
-    import pandas as pd
-    import numpy as np
-    import os
+    from collections import defaultdict
+    from .job_trend_analyzer import DATA_SOURCE_LABEL
+    from analysis.models import HistoricalJobData
 
     keywords_str = request.GET.get('keywords', 'Python,Java,前端')
     keywords = [k.strip() for k in keywords_str.split(',') if k.strip()][:6]
 
-    demand_file = os.path.join(DATASET_PATH, 'demand', 'r0.parquet')
-    if not os.path.exists(demand_file):
-        return JsonResponse({'code': 1, 'msg': '未找到Job-SDF数据文件，请确认benchmark/dataset目录存在'})
+    series_list = []
+    all_date_set: set = set()
+    for kw in keywords:
+        qs = HistoricalJobData.objects.filter(
+            Q(skill_name__icontains=kw) | Q(occupation_l2__icontains=kw)
+        ).order_by('date').values('date', 'demand_count')
 
-    try:
-        df = pd.read_parquet(demand_file)
-        month_cols = [c for c in df.columns if str(c).startswith('20')]
+        by_date = defaultdict(int)
+        for row in qs:
+            by_date[row['date']] += row['demand_count']
 
-        series_list = []
-        for kw in keywords:
-            kw_lower = kw.lower().strip()
-            skill_range = None
-            for k, rng in KEYWORD_SKILL_GROUPS.items():
-                if k.lower() == kw_lower or kw_lower in k.lower() or k.lower() in kw_lower:
-                    skill_range = rng
-                    break
+        # HistoricalJobData 没命中 -> 用 JobData.created_at 兜底
+        if not by_date:
+            jobs_qs = (JobData.objects
+                       .filter(Q(key_word__icontains=kw) | Q(name__icontains=kw))
+                       .exclude(created_at__isnull=True)
+                       .values_list('created_at', flat=True))
+            for ts in jobs_qs:
+                by_date[ts.date()] += 1
 
-            if skill_range:
-                s, e = skill_range
-                subset = df[(df['skill_id'] >= s) & (df['skill_id'] < e)][month_cols]
-            else:
-                subset = df[month_cols]
+        if len(by_date) < 3:
+            continue
 
-            monthly = subset.sum(axis=0)
-            monthly = monthly[monthly > 0]
-            if len(monthly) < 3:
-                continue
+        sorted_dates = sorted(by_date.keys())
+        values = [by_date[d] for d in sorted_dates]
+        base = values[0] if values[0] > 0 else 1
+        index_series = [round(v / base * 100, 1) for v in values]
+        date_labels = [d.strftime('%Y-%m-%d') for d in sorted_dates]
+        all_date_set.update(date_labels)
+        series_list.append({'name': kw, 'data': index_series, 'dates': date_labels, 'raw': values})
 
-            base = monthly.iloc[0]
-            index_series = (monthly / base * 100).round(1) if base > 0 else monthly
-            series_list.append({
-                'name': kw,
-                'data': index_series.values.tolist(),
-                'dates': index_series.index.tolist(),
-            })
+    if not series_list:
+        return JsonResponse({'code': 1, 'msg': '所选关键词暂无历史数据,请先运行 `python manage.py import_lagou --with-trend`'})
 
-        if not series_list:
-            return JsonResponse({'code': 1, 'msg': '所选关键词暂无历史数据'})
-
-        # 统一日期轴（取最长的那个）
-        all_dates = series_list[0]['dates']
-        for s in series_list[1:]:
-            if len(s['dates']) > len(all_dates):
-                all_dates = s['dates']
-
-        return JsonResponse({
-            'code': 0,
-            'dates': all_dates,
-            'series': series_list,
-            'note': 'Job-SDF数据集（2021-2023），纵轴为需求相对指数（以各自首月=100）',
-            'source': 'Job-SDF (NeurIPS 2024)'
-        })
-    except Exception as e:
-        import traceback
-        return JsonResponse({'code': 1, 'msg': f'读取数据失败: {str(e)}', 'detail': traceback.format_exc()})
+    all_dates = sorted(all_date_set)
+    return JsonResponse({
+        'code': 0,
+        'dates': all_dates,
+        'series': series_list,
+        'note': '纵轴为需求相对指数(以各自首日=100),原始岗位数见 series[].raw',
+        'source': DATA_SOURCE_LABEL,
+    })
 
 
 def get_sdf_hot_skills(request):
     """
-    Job-SDF 热门技能排行 API
-    返回各关键词在整个历史期间的总需求量排行
+    热门关键词排行 API (路径沿用旧命名 /api/sdf/hot-skills/)
+    返回当前 JobData 各关键词的总岗位数 + 增长率(首尾 3 日平均对比)
+    数据源: 拉勾网数据集 + 实时爬取
     """
-    from .job_trend_analyzer import KEYWORD_SKILL_GROUPS, DATASET_PATH
-    import pandas as pd
-    import os
+    from collections import defaultdict
+    from analysis.models import HistoricalJobData
+    from .job_trend_analyzer import DATA_SOURCE_LABEL
 
-    demand_file = os.path.join(DATASET_PATH, 'demand', 'r0.parquet')
-    if not os.path.exists(demand_file):
-        return JsonResponse({'code': 1, 'msg': '未找到Job-SDF数据文件'})
+    # 总量排行
+    totals = list(
+        JobData.objects.exclude(key_word__isnull=True).exclude(key_word='')
+        .values('key_word').annotate(total=Count('job_id')).order_by('-total')[:30]
+    )
 
-    try:
-        df = pd.read_parquet(demand_file)
-        month_cols = [c for c in df.columns if str(c).startswith('20')]
+    # 每个关键词拉一下日度序列,算增长率
+    result = []
+    for row in totals:
+        kw = row['key_word']
+        daily = (
+            HistoricalJobData.objects
+            .filter(Q(skill_name__icontains=kw) | Q(occupation_l2__icontains=kw))
+            .values('date').order_by('date')
+            .annotate(n=Count('hist_id'))
+        )
+        series = [(r['date'], r['n']) for r in daily]
 
-        result = []
-        seen = set()
-        for kw, (s, e) in KEYWORD_SKILL_GROUPS.items():
-            if kw in seen:
-                continue
-            seen.add(kw)
-            subset = df[(df['skill_id'] >= s) & (df['skill_id'] < e)][month_cols]
-            total = int(subset.values.sum())
-            if total > 0:
-                # 计算增长率（最后3个月 vs 最初3个月）
-                monthly = subset.sum(axis=0)
-                monthly = monthly[monthly > 0]
-                if len(monthly) >= 6:
-                    early_avg = float(monthly.iloc[:3].mean())
-                    late_avg = float(monthly.iloc[-3:].mean())
-                    growth = round((late_avg - early_avg) / (early_avg + 1) * 100, 1)
-                else:
-                    growth = 0.0
-                result.append({'name': kw, 'total': total, 'growth': growth})
+        growth = 0.0
+        if len(series) >= 6:
+            early_avg = sum(v for _, v in series[:3]) / 3.0
+            late_avg = sum(v for _, v in series[-3:]) / 3.0
+            growth = round((late_avg - early_avg) / (early_avg + 1) * 100, 1)
 
-        result.sort(key=lambda x: x['total'], reverse=True)
-        return JsonResponse({'code': 0, 'data': result[:15], 'source': 'Job-SDF (NeurIPS 2024)'})
-    except Exception as e:
-        return JsonResponse({'code': 1, 'msg': str(e)})
+        result.append({'name': kw, 'total': row['total'], 'growth': growth})
+
+    result.sort(key=lambda x: x['total'], reverse=True)
+    return JsonResponse({'code': 0, 'data': result[:15], 'source': DATA_SOURCE_LABEL})
 
 
 def get_sdf_cooccurrence(request):
     """
-    Job-SDF 技能共现推荐 API
-    给定一个关键词，返回与之共现频率最高的其他技能
+    技能共现推荐 API (路径沿用旧命名 /api/sdf/cooccurrence/)
+    数据源: 由 `python manage.py import_lagou --with-cooc` 写入的 SkillCooccurrence
     """
-    from .job_trend_analyzer import KEYWORD_SKILL_GROUPS, DATASET_PATH
-    import pandas as pd
-    import os
+    from analysis.models import SkillCooccurrence
+    from .job_trend_analyzer import DATA_SOURCE_LABEL
 
-    keyword = request.GET.get('keyword', 'Python')
+    keyword = request.GET.get('keyword', 'Python').strip()
+    if not keyword:
+        return JsonResponse({'code': 1, 'msg': '请提供关键词'})
 
-    graph_file = os.path.join(DATASET_PATH, 'graph', 'r0.parquet')
-    if not os.path.exists(graph_file):
-        return JsonResponse({'code': 1, 'msg': '未找到Job-SDF共现数据文件'})
+    hits = SkillCooccurrence.objects.filter(
+        Q(skill_1_name__icontains=keyword) | Q(skill_2_name__icontains=keyword)
+    ).order_by('-frequency')[:50]
 
-    try:
-        kw_lower = keyword.lower().strip()
-        skill_range = None
-        for k, rng in KEYWORD_SKILL_GROUPS.items():
-            if k.lower() == kw_lower or kw_lower in k.lower() or k.lower() in kw_lower:
-                skill_range = rng
-                break
+    if not hits.exists():
+        return JsonResponse({'code': 1, 'msg': f'未找到关键词 "{keyword}" 的共现技能,请确认已运行 import_lagou --with-cooc'})
 
-        if not skill_range:
-            return JsonResponse({'code': 1, 'msg': f'未找到关键词 "{keyword}" 对应的技能范围'})
+    seen = {keyword.lower()}
+    recs = []
+    for row in hits:
+        other = row.skill_2_name if keyword.lower() in row.skill_1_name.lower() else row.skill_1_name
+        if other.lower() in seen:
+            continue
+        seen.add(other.lower())
+        recs.append({'skill': other, 'frequency': row.frequency})
+        if len(recs) >= 8:
+            break
 
-        gdf = pd.read_parquet(graph_file)
-        s, e = skill_range
-
-        related = gdf[
-            ((gdf['row_id'] >= s) & (gdf['row_id'] < e)) |
-            ((gdf['col_id'] >= s) & (gdf['col_id'] < e))
-        ]
-
-        cooc_counts = {}
-        for _, row in related.iterrows():
-            row_id, col_id = int(row['row_id']), int(row['col_id'])
-            other_id = col_id if (s <= row_id < e) else row_id
-            if not (s <= other_id < e):
-                cooc_counts[other_id] = cooc_counts.get(other_id, 0) + 1
-
-        recommendations = []
-        seen_kws = {kw_lower}
-        for other_id, freq in sorted(cooc_counts.items(), key=lambda x: x[1], reverse=True)[:50]:
-            for k, (ks, ke) in KEYWORD_SKILL_GROUPS.items():
-                if ks <= other_id < ke and k.lower() not in seen_kws:
-                    seen_kws.add(k.lower())
-                    recommendations.append({'skill': k, 'frequency': freq})
-                    break
-            if len(recommendations) >= 8:
-                break
-
-        return JsonResponse({'code': 0, 'keyword': keyword, 'data': recommendations, 'source': 'Job-SDF (NeurIPS 2024)'})
-    except Exception as e:
-        return JsonResponse({'code': 1, 'msg': str(e)})
+    return JsonResponse({'code': 0, 'keyword': keyword, 'data': recs, 'source': DATA_SOURCE_LABEL})
 
 
 def get_sdf_salary_reference(request):
     """
-    Job-SDF 历史薪资参考 API
-    结合 Job-SDF 历史需求趋势 + 当前爬取薪资数据，
-    返回该岗位的历史需求指数与当前薪资的对照
+    历史薪资参考 API (路径沿用旧命名 /api/sdf/salary-reference/)
+    返回关键词的历史需求趋势(按日聚合)+ 当前爬取薪资统计
     """
-    from .job_trend_analyzer import KEYWORD_SKILL_GROUPS, DATASET_PATH
-    import pandas as pd
-    import os
+    from collections import defaultdict
+    from analysis.models import HistoricalJobData
+    from .job_trend_analyzer import DATA_SOURCE_LABEL
 
-    keyword = request.GET.get('keyword', '')
+    keyword = request.GET.get('keyword', '').strip()
     if not keyword:
         return JsonResponse({'code': 1, 'msg': '请提供关键词'})
 
-    demand_file = os.path.join(DATASET_PATH, 'demand', 'r0.parquet')
-    has_sdf = os.path.exists(demand_file)
-
-    # 当前爬取数据的薪资统计（按月）
-    from django.utils import timezone
-    from datetime import timedelta
-    from django.db.models import Q
-
+    # 当前岗位薪资统计
     jobs = JobData.objects.filter(
         Q(key_word__icontains=keyword) | Q(name__icontains=keyword)
     ).exclude(salary_max__isnull=True)
@@ -1018,43 +969,37 @@ def get_sdf_salary_reference(request):
         'count': jobs.count(),
     }
 
-    # Job-SDF 历史需求趋势
+    # 历史需求趋势
+    by_date = defaultdict(int)
+    hist_qs = (
+        HistoricalJobData.objects
+        .filter(Q(skill_name__icontains=keyword) | Q(occupation_l2__icontains=keyword))
+        .values('date', 'demand_count').order_by('date')
+    )
+    for row in hist_qs:
+        by_date[row['date']] += row['demand_count']
+
     historical = {'has_data': False}
-    if has_sdf:
-        try:
-            df = pd.read_parquet(demand_file)
-            month_cols = [c for c in df.columns if str(c).startswith('20')]
-            kw_lower = keyword.lower()
-            skill_range = None
-            for k, rng in KEYWORD_SKILL_GROUPS.items():
-                if k.lower() == kw_lower or kw_lower in k.lower() or k.lower() in kw_lower:
-                    skill_range = rng
-                    break
-            if skill_range:
-                s, e = skill_range
-                subset = df[(df['skill_id'] >= s) & (df['skill_id'] < e)][month_cols]
-                monthly = subset.sum(axis=0)
-                monthly = monthly[monthly > 0]
-                if len(monthly) >= 3:
-                    base = monthly.iloc[0]
-                    index_s = (monthly / base * 100).round(1) if base > 0 else monthly
-                    historical = {
-                        'has_data': True,
-                        'dates': index_s.index.tolist(),
-                        'values': index_s.values.tolist(),
-                        'growth_rate': round(
-                            (float(index_s.iloc[-1]) - float(index_s.iloc[0])) / float(index_s.iloc[0]) * 100, 1
-                        ) if float(index_s.iloc[0]) > 0 else 0,
-                    }
-        except Exception:
-            pass
+    if len(by_date) >= 3:
+        sorted_dates = sorted(by_date.keys())
+        values = [by_date[d] for d in sorted_dates]
+        base = values[0] or 1
+        index_series = [round(v / base * 100, 1) for v in values]
+        historical = {
+            'has_data': True,
+            'dates': [d.strftime('%Y-%m-%d') for d in sorted_dates],
+            'values': index_series,
+            'raw': values,
+            'growth_rate': round((index_series[-1] - index_series[0]) / index_series[0] * 100, 1)
+                if index_series[0] else 0,
+        }
 
     return JsonResponse({
         'code': 0,
         'keyword': keyword,
         'salary_stats': salary_stats,
         'historical_demand': historical,
-        'source': 'Job-SDF (NeurIPS 2024) + 实时爬取数据'
+        'source': DATA_SOURCE_LABEL,
     })
 
 
